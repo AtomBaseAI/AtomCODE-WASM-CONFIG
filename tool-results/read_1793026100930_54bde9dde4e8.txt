@@ -1,0 +1,762 @@
+     1→"use client"
+     2→import {
+     3→    Dialog,
+     4→    DialogContent,
+     5→    DialogHeader,
+     6→    DialogTitle,
+     7→    DialogTrigger,
+     8→} from "@/components/ui/dialog"
+     9→import { Ban, CheckCircle, MessageCircleWarning, Play, Plus } from "lucide-react"
+    10→import { useState, useTransition } from "react"
+    11→import { Button } from "@/components/ui/button"
+    12→import { Input } from "@/components/ui/input"
+    13→import { LoaderIcon } from "lucide-react"
+    14→import * as z from "zod"
+    15→import {
+    16→    Form,
+    17→    FormControl,
+    18→    FormField,
+    19→    FormItem,
+    20→    FormLabel,
+    21→    FormMessage
+    22→} from "@/components/ui/form"
+    23→import {
+    24→    Select,
+    25→    SelectContent,
+    26→    SelectItem,
+    27→    SelectTrigger,
+    28→    SelectValue,
+    29→} from "@/components/ui/select"
+    30→import { useForm } from "react-hook-form"
+    31→import { zodResolver } from "@hookform/resolvers/zod"
+    32→import { FormError } from "@/components/auth/form-error"
+    33→import { FormSuccess } from "@/components/auth/form-success"
+    34→import { AddQuestionSchema } from "@/schemas/question-schema"
+    35→import { Textarea } from "@/components/ui/textarea"
+    36→import { addquestion } from "@/actions/question"
+    37→import { toast } from "sonner"
+    38→import { LanguageVersionSelect } from "@/components/code/language-version-select";
+    39→import {
+    40→    getInitialVersionProfileId,
+    41→    setStoredVersionForLang,
+    42→} from "@/lib/runtime-registry";
+    43→import { judgeRunTestCases } from "@/lib/wasm-judge";
+    44→const AddQuestion = () => {
+    45→    const form = useForm<z.infer<typeof AddQuestionSchema>>({
+    46→        resolver: zodResolver(AddQuestionSchema),
+    47→        defaultValues: {
+    48→            title: '',
+    49→            description: '',
+    50→            sampleinput1: '',
+    51→            sampleinput2: '',
+    52→            sampleoutput1: '',
+    53→            sampleoutput2: '',
+    54→            input1: '',
+    55→            input2: '',
+    56→            input3: '',
+    57→            output1: '',
+    58→            output2: '',
+    59→            output3: '',
+    60→            sourcecode: '',
+    61→            referenceimg: '',
+    62→            maxscore: 10,
+    63→            difficulty: '',
+    64→            lang: '',
+    65→            topic: '',
+    66→            subtopic: '',
+    67→            inputconstrains: '',
+    68→            blacklist: '',
+    69→            whitelist: ''
+    70→        }
+    71→    })
+    72→    const [testCaseStatus, setTestCaseStatus] = useState({
+    73→        sample1: "",
+    74→        sample2: "",
+    75→        input1: "",
+    76→        input2: "",
+    77→        input3: ""
+    78→    });
+    79→    const [open, setOpen] = useState(false)
+    80→    const [isLoading, startTransition] = useTransition()
+    81→    const [error, setError] = useState<string | undefined>("")
+    82→    const [success, setSuccess] = useState<string | undefined>("")
+    83→    const [hidesubmit, setHideSubmit] = useState(true)
+    84→    const [testProcess, setTestProcess] = useState(false)
+    85→    const [runVersionProfileId, setRunVersionProfileId] = useState<string | undefined>(undefined)
+    86→    const selectedLang = form.watch("lang")
+    87→    const handleSubmit = (values: z.infer<typeof AddQuestionSchema>) => {
+    88→        setError("")
+    89→        setSuccess("")
+    90→        startTransition(() => {
+    91→            addquestion(values)
+    92→                .then((data) => {
+    93→
+    94→                    // setError(data.error)
+    95→                    // setSuccess(data.success)
+    96→                    if (data.success) {
+    97→                        form.reset()
+    98→                        setOpen(false)
+    99→                        toast.success(data.success);
+   100→                        setTestCaseStatus({
+   101→                            sample1: "",
+   102→                            sample2: "",
+   103→                            input1: "",
+   104→                            input2: "",
+   105→                            input3: "",
+   106→                        });
+   107→                        setHideSubmit(true)
+   108→                    }
+   109→                })
+   110→                .catch(() => toast.error("Something went wrong!"));
+   111→        })
+   112→    }
+   113→    const RunCode = async () => {
+   114→        setTestProcess(true);
+   115→        const lang = form.getValues("lang");
+   116→        if (!lang) {
+   117→            console.error("Select a language before running test cases");
+   118→            setTestProcess(false);
+   119→            return;
+   120→        }
+   121→
+   122→        const testCases = [
+   123→            { input: form.getValues("input1"), expectedOutput: form.getValues("output1"), tcid: "input1" as keyof typeof testCaseStatus },
+   124→            { input: form.getValues("input2"), expectedOutput: form.getValues("output2"), tcid: "input2" as keyof typeof testCaseStatus },
+   125→            { input: form.getValues("input3"), expectedOutput: form.getValues("output3"), tcid: "input3" as keyof typeof testCaseStatus },
+   126→            { input: form.getValues("sampleinput1"), expectedOutput: form.getValues("sampleoutput1"), tcid: "sample1" as keyof typeof testCaseStatus },
+   127→            { input: form.getValues("sampleinput2"), expectedOutput: form.getValues("sampleoutput2"), tcid: "sample2" as keyof typeof testCaseStatus },
+   128→        ];
+   129→
+   130→        let newTestCaseStatus = { ...testCaseStatus };
+   131→
+   132→        try {
+   133→            // Mark all cases as processing, then verify locally via WASM.
+   134→            for (const { tcid } of testCases) {
+   135→                newTestCaseStatus[tcid] = "processing";
+   136→            }
+   137→            setTestCaseStatus({ ...newTestCaseStatus });
+   138→
+   139→            // Client-side WASM execution (no external judge API).
+   140→            const outcomes = await judgeRunTestCases({
+   141→                lang,
+   142→                versionProfileId: runVersionProfileId,
+   143→                code: form.getValues("sourcecode") ?? "",
+   144→                cases: testCases.map(({ input, expectedOutput }) => ({ input, expectedOutput })),
+   145→            });
+   146→
+   147→            testCases.forEach(({ tcid }, index) => {
+   148→                newTestCaseStatus[tcid] =
+   149→                    outcomes[index]?.status === "Success" ? "success" : "failed";
+   150→            });
+   151→        } catch (error) {
+   152→            console.error("Something went wrong!", error);
+   153→        }
+   154→
+   155→        setTestCaseStatus(newTestCaseStatus);
+   156→        setTestProcess(false);
+   157→
+   158→        const allSuccessful = Object.values(newTestCaseStatus).every(
+   159→            (status) => status === "success"
+   160→        );
+   161→
+   162→        setHideSubmit(!allSuccessful);
+   163→    };
+   164→
+   165→    const getStatusColor = (status: string) =>
+   166→        status === "processing" ? "bg-cyan-400" :
+   167→            status === "success" ? "bg-green-400" :
+   168→                status === "failed" ? "bg-red-400" :
+   169→                    "bg-orange-400";
+   170→    const getStatusIcon = (status: string) =>
+   171→        status === "processing" ? <LoaderIcon className="animate-spin" /> :
+   172→            status === "success" ? <CheckCircle /> :
+   173→                status === "failed" ? <Ban /> :
+   174→                    <MessageCircleWarning />;
+   175→    const handleModalClose = () => {
+   176→        form.reset();  // Reset the form
+   177→        setTestCaseStatus({
+   178→            sample1: "",
+   179→            sample2: "",
+   180→            input1: "",
+   181→            input2: "",
+   182→            input3: ""
+   183→        });
+   184→        setHideSubmit(true);
+   185→        setError("");
+   186→        setSuccess("");
+   187→    };
+   188→    return (
+   189→        <>
+   190→            <Dialog open={open} onOpenChange={(isOpen) => {
+   191→                if (!isOpen) handleModalClose();
+   192→                setOpen(isOpen);
+   193→            }}>
+   194→                <DialogTrigger asChild>
+   195→                    <Button variant="outline" className="bg-green-500 text-white  hover:bg-green-700 hover:text-white">
+   196→                        <Plus className="mr-2" />
+   197→                        Add Question
+   198→                    </Button>
+   199→                </DialogTrigger>
+   200→                <DialogContent aria-describedby={undefined} className="sm:max-w-[100vw] h-[100vh] overflow-y-auto overflow-x-hidden">
+   201→                    <DialogHeader>
+   202→                        <DialogTitle>Add Question</DialogTitle>
+   203→                    </DialogHeader>
+   204→
+   205→                    <div className="w-full h-full">
+   206→                        <Form {...form}>
+   207→                            <form>
+   208→                                <div className="grid grid-cols-3 gap-2 gap-y-2">
+   209→                                    <div className="grid gap-1 col-span-2">
+   210→                                        <FormField
+   211→                                            control={form.control}
+   212→                                            name="title"
+   213→                                            render={({ field }) => (
+   214→                                                <FormItem>
+   215→                                                    <FormLabel>Question Title</FormLabel>
+   216→                                                    <FormControl>
+   217→                                                        <Input
+   218→                                                            {...field}
+   219→                                                            disabled={isLoading}
+   220→                                                            placeholder="Question"
+   221→                                                            type="text"
+   222→                                                            autoComplete='false'
+   223→                                                        />
+   224→                                                    </FormControl>
+   225→                                                    <FormMessage />
+   226→                                                </FormItem>
+   227→                                            )}
+   228→                                        />
+   229→                                    </div>
+   230→
+   231→                                    <div className="grid gap-1 col-span-1 row-span-8">
+   232→                                        <FormField
+   233→                                            control={form.control}
+   234→                                            name="sourcecode"
+   235→                                            render={({ field }) => (
+   236→                                                <FormItem>
+   237→                                                    <FormLabel>Server Code</FormLabel>
+   238→                                                    <FormControl>
+   239→                                                        <Textarea
+   240→                                                            disabled={isLoading}
+   241→                                                            placeholder="< Code >"
+   242→                                                            className="resize-none h-[92%]"
+   243→                                                            {...field}
+   244→                                                            autoComplete='false'
+   245→                                                        />
+   246→                                                    </FormControl>
+   247→                                                    <FormMessage />
+   248→                                                </FormItem>
+   249→                                            )}
+   250→                                        />
+   251→                                    </div>
+   252→                                    <div className="grid gap-1 row-span-3 col-span-2 h-full">
+   253→                                        <FormField
+   254→                                            control={form.control}
+   255→                                            name="description"
+   256→                                            render={({ field }) => (
+   257→                                                <FormItem>
+   258→                                                    <FormLabel>Description</FormLabel>
+   259→                                                    <FormControl>
+   260→                                                        <Textarea
+   261→                                                            disabled={isLoading}
+   262→                                                            placeholder="Question Description"
+   263→                                                            className="resize-none "
+   264→                                                            {...field}
+   265→                                                        />
+   266→                                                    </FormControl>
+   267→                                                    <FormMessage />
+   268→                                                </FormItem>
+   269→                                            )}
+   270→                                        />
+   271→                                    </div>
+   272→                                    <div className="grid gap-1 row-span-2 col-span-1 h-full">
+   273→                                        <FormField
+   274→                                            control={form.control}
+   275→                                            name="input1"
+   276→                                            render={({ field }) => (
+   277→                                                <FormItem>
+   278→                                                    <FormLabel>Testcase Input 1</FormLabel>
+   279→                                                    <FormControl>
+   280→                                                        <Textarea
+   281→                                                            disabled={isLoading}
+   282→                                                            placeholder="Testcase Input"
+   283→                                                            className="resize-none"
+   284→                                                            {...field}
+   285→                                                        />
+   286→                                                    </FormControl>
+   287→                                                    <FormMessage />
+   288→                                                </FormItem>
+   289→                                            )}
+   290→                                        />
+   291→                                    </div>
+   292→                                    <div className="grid gap-1 row-span-2 col-span-1 h-full">
+   293→                                        <FormField
+   294→                                            control={form.control}
+   295→                                            name="output1"
+   296→                                            render={({ field }) => (
+   297→                                                <FormItem>
+   298→                                                    <FormLabel>Testcase Output 1</FormLabel>
+   299→                                                    <div className="flex flex-row justify-center items-center">
+   300→                                                        <FormControl>
+   301→                                                            <Textarea
+   302→                                                                disabled={isLoading}
+   303→                                                                placeholder="Testcase Output"
+   304→                                                                className="resize-none"
+   305→                                                                {...field}
+   306→                                                            />
+   307→                                                        </FormControl>
+   308→                                                        <div className="w-[10%] h-full">
+   309→                                                            <div className={`${getStatusColor(testCaseStatus.input1)} h-[3rem] w-[3rem] flex justify-center items-center rounded-md text-white`}>
+   310→                                                                {getStatusIcon(testCaseStatus.input1)}
+   311→                                                            </div>
+   312→                                                        </div>
+   313→                                                    </div>
+   314→                                                    <FormMessage />
+   315→                                                </FormItem>
+   316→                                            )}
+   317→                                        />
+   318→                                    </div>
+   319→                                    <div className="grid gap-1 row-span-2 col-span-1 h-full">
+   320→                                        <FormField
+   321→                                            control={form.control}
+   322→                                            name="input2"
+   323→                                            render={({ field }) => (
+   324→                                                <FormItem>
+   325→                                                    <FormLabel>Testcase Input 2</FormLabel>
+   326→                                                    <FormControl>
+   327→                                                        <Textarea
+   328→                                                            disabled={isLoading}
+   329→                                                            placeholder="Testcase Input"
+   330→                                                            className="resize-none"
+   331→                                                            {...field}
+   332→                                                        />
+   333→                                                    </FormControl>
+   334→                                                    <FormMessage />
+   335→                                                </FormItem>
+   336→                                            )}
+   337→                                        />
+   338→                                    </div>
+   339→                                    <div className="grid gap-1 row-span-2 col-span-1 h-full">
+   340→                                        <FormField
+   341→                                            control={form.control}
+   342→                                            name="output2"
+   343→                                            render={({ field }) => (
+   344→                                                <FormItem>
+   345→                                                    <FormLabel>Testcase Output 2</FormLabel>
+   346→                                                    <div className="flex flex-row justify-center items-center">
+   347→                                                        <FormControl>
+   348→                                                            <Textarea
+   349→                                                                disabled={isLoading}
+   350→                                                                placeholder="Testcase Output"
+   351→                                                                className="resize-none "
+   352→                                                                {...field}
+   353→                                                            />
+   354→                                                        </FormControl>
+   355→                                                        <FormMessage />
+   356→                                                        <div className="w-[10%] h-full">
+   357→                                                            <div className={`${getStatusColor(testCaseStatus.input2)} h-[3rem] w-[3rem] flex justify-center items-center rounded-md text-white`}>
+   358→                                                                {getStatusIcon(testCaseStatus.input2)}
+   359→                                                            </div>
+   360→                                                        </div>
+   361→                                                    </div>
+   362→                                                </FormItem>
+   363→                                            )}
+   364→                                        />
+   365→                                    </div>
+   366→                                    <div className="grid gap-1 row-span-2 col-span-1 h-full">
+   367→                                        <FormField
+   368→                                            control={form.control}
+   369→                                            name="input3"
+   370→                                            render={({ field }) => (
+   371→                                                <FormItem>
+   372→                                                    <FormLabel>Testcase Input 3</FormLabel>
+   373→                                                    <FormControl>
+   374→                                                        <Textarea
+   375→                                                            disabled={isLoading}
+   376→                                                            placeholder="Testcase Input"
+   377→                                                            className="resize-none "
+   378→                                                            {...field}
+   379→                                                        />
+   380→                                                    </FormControl>
+   381→                                                    <FormMessage />
+   382→                                                </FormItem>
+   383→                                            )}
+   384→                                        />
+   385→                                    </div>
+   386→                                    <div className="grid gap-1 row-span-2 col-span-1 h-full">
+   387→                                        <FormField
+   388→                                            control={form.control}
+   389→                                            name="output3"
+   390→                                            render={({ field }) => (
+   391→                                                <FormItem>
+   392→                                                    <FormLabel>Testcase Output 3</FormLabel>
+   393→                                                    <div className="flex flex-row justify-center items-center">
+   394→                                                        <FormControl>
+   395→                                                            <Textarea
+   396→                                                                disabled={isLoading}
+   397→                                                                placeholder="Testcase Output"
+   398→                                                                className="resize-none"
+   399→                                                                {...field}
+   400→                                                            />
+   401→                                                        </FormControl>
+   402→                                                        <FormMessage />
+   403→                                                        <div className="w-[10%] h-full">
+   404→                                                            <div className={`${getStatusColor(testCaseStatus.input3)} h-[3rem] w-[3rem] flex justify-center items-center rounded-md text-white`}>
+   405→                                                                {getStatusIcon(testCaseStatus.input3)}
+   406→                                                            </div>
+   407→                                                        </div>
+   408→                                                    </div>
+   409→                                                </FormItem>
+   410→                                            )}
+   411→                                        />
+   412→                                    </div>
+   413→                                    <div className="grid col-span-1 row-span-6">
+   414→                                        <div className="grid gap-1">
+   415→                                            <FormField
+   416→                                                control={form.control}
+   417→                                                name="difficulty"
+   418→                                                render={({ field }) => (
+   419→                                                    <FormItem>
+   420→                                                        <FormLabel>Difficulty</FormLabel>
+   421→                                                        <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
+   422→                                                            <FormControl>
+   423→                                                                <SelectTrigger>
+   424→                                                                    <SelectValue placeholder="Select Difficulty" />
+   425→                                                                </SelectTrigger>
+   426→                                                            </FormControl>
+   427→                                                            <SelectContent>
+   428→                                                                <SelectItem value="easy">Easy</SelectItem>
+   429→                                                                <SelectItem value="medium">Medium</SelectItem>
+   430→                                                                <SelectItem value="hard">Hard</SelectItem>
+   431→                                                            </SelectContent>
+   432→                                                        </Select>
+   433→                                                        <FormMessage />
+   434→                                                    </FormItem>
+   435→                                                )}
+   436→                                            />
+   437→                                        </div>
+   438→                                        <div className="grid gap-1">
+   439→                                            <FormField
+   440→                                                control={form.control}
+   441→                                                name="lang"
+   442→                                                render={({ field }) => (
+   443→                                                    <FormItem>
+   444→                                                        <FormLabel>Language</FormLabel>
+   445→                                                        <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isLoading}>
+   446→                                                            <FormControl>
+   447→                                                                <SelectTrigger>
+   448→                                                                    <SelectValue placeholder="Select Language" />
+   449→                                                                </SelectTrigger>
+   450→                                                            </FormControl>
+   451→                                                            <SelectContent>
+   452→                                                                <SelectItem value="c">C</SelectItem>
+   453→                                                                <SelectItem value="cpp">C++</SelectItem>
+   454→                                                                <SelectItem value="java">Java</SelectItem>
+   455→                                                                <SelectItem value="python">Python</SelectItem>
+   456→                                                                <SelectItem value="sql">SQL (SQLite)</SelectItem>
+   457→                                                                <SelectItem value="javascript">JavaScript</SelectItem>
+   458→                                                                <SelectItem value="typescript">TypeScript</SelectItem>
+   459→                                                                <SelectItem value="ruby">Ruby</SelectItem>
+   460→                                                            </SelectContent>
+   461→                                                        </Select>
+   462→                                                        <FormMessage />
+   463→                                                    </FormItem>
+   464→                                                )}
+   465→                                            />
+   466→                                        </div>
+   467→                                        <div className="grid gap-1">
+   468→                                            <FormField
+   469→                                                control={form.control}
+   470→                                                name="referenceimg"
+   471→                                                render={({ field }) => (
+   472→                                                    <FormItem>
+   473→                                                        <FormLabel>Refrence Image URL</FormLabel>
+   474→                                                        <FormControl>
+   475→                                                            <Input
+   476→                                                                {...field}
+   477→                                                                disabled={isLoading}
+   478→                                                                placeholder="(optional)"
+   479→                                                                type="text"
+   480→                                                                autoComplete='false'
+   481→                                                            />
+   482→                                                        </FormControl>
+   483→                                                        <FormMessage />
+   484→                                                    </FormItem>
+   485→                                                )}
+   486→                                            />
+   487→                                        </div>
+   488→                                        <div className="grid gap-1">
+   489→                                            <FormField
+   490→                                                control={form.control}
+   491→                                                name="maxscore"
+   492→                                                render={({ field }) => (
+   493→                                                    <FormItem>
+   494→                                                        <FormLabel>Maximum Score</FormLabel>
+   495→                                                        <FormControl>
+   496→                                                            <Input
+   497→                                                                {...field}
+   498→                                                                disabled={true}
+   499→                                                                placeholder="10"
+   500→                                                                type="text"
+   501→                                                                autoComplete='false'
+   502→                                                            />
+   503→                                                        </FormControl>
+   504→                                                        <FormMessage />
+   505→                                                    </FormItem>
+   506→                                                )}
+   507→                                            />
+   508→                                        </div>
+   509→                                    </div>
+   510→                                    <div className="grid gap-1 row-span-2 col-span-1 h-full">
+   511→                                        <FormField
+   512→                                            control={form.control}
+   513→                                            name="sampleinput1"
+   514→                                            render={({ field }) => (
+   515→                                                <FormItem>
+   516→                                                    <FormLabel>Sample Input 1</FormLabel>
+   517→                                                    <FormControl>
+   518→                                                        <Textarea
+   519→                                                            disabled={isLoading}
+   520→                                                            placeholder="Sample Input"
+   521→                                                            className="resize-none "
+   522→                                                            {...field}
+   523→                                                        />
+   524→                                                    </FormControl>
+   525→                                                    <FormMessage />
+   526→                                                </FormItem>
+   527→                                            )}
+   528→                                        />
+   529→                                    </div>
+   530→                                    <div className="grid gap-1 row-span-2 col-span-1 h-full">
+   531→                                        <FormField
+   532→                                            control={form.control}
+   533→                                            name="sampleoutput1"
+   534→                                            render={({ field }) => (
+   535→                                                <FormItem>
+   536→                                                    <FormLabel>Sample Output 1</FormLabel>
+   537→                                                    <div className="flex flex-row justify-center items-center">
+   538→                                                        <FormControl>
+   539→                                                            <Textarea
+   540→                                                                disabled={isLoading}
+   541→                                                                placeholder="Sample Output"
+   542→                                                                className="resize-none "
+   543→                                                                {...field}
+   544→                                                            />
+   545→                                                        </FormControl>
+   546→                                                        <FormMessage />
+   547→                                                        <div className="w-[10%] h-full">
+   548→                                                            <div className={`${getStatusColor(testCaseStatus.sample1)} h-[3rem] w-[3rem] flex justify-center items-center rounded-md text-white`}>
+   549→                                                                {getStatusIcon(testCaseStatus.sample1)}
+   550→                                                            </div>
+   551→                                                        </div>
+   552→                                                    </div>
+   553→                                                </FormItem>
+   554→                                            )}
+   555→                                        />
+   556→                                    </div>
+   557→                                    <div className="grid gap-1 row-span-2 col-span-1 h-full">
+   558→                                        <FormField
+   559→                                            control={form.control}
+   560→                                            name="sampleinput2"
+   561→                                            render={({ field }) => (
+   562→                                                <FormItem>
+   563→                                                    <FormLabel>Sample Input 2</FormLabel>
+   564→                                                    <FormControl>
+   565→                                                        <Textarea
+   566→                                                            disabled={isLoading}
+   567→                                                            placeholder="Sample Input"
+   568→                                                            className="resize-none"
+   569→                                                            {...field}
+   570→                                                        />
+   571→                                                    </FormControl>
+   572→                                                    <FormMessage />
+   573→                                                </FormItem>
+   574→                                            )}
+   575→                                        />
+   576→                                    </div>
+   577→                                    <div className="grid gap-1 row-span-2 col-span-1 h-full">
+   578→                                        <FormField
+   579→                                            control={form.control}
+   580→                                            name="sampleoutput2"
+   581→                                            render={({ field }) => (
+   582→                                                <FormItem>
+   583→                                                    <FormLabel>Sample Output 2</FormLabel>
+   584→                                                    <div className="flex flex-row justify-center items-center">
+   585→                                                        <FormControl>
+   586→                                                            <Textarea
+   587→                                                                disabled={isLoading}
+   588→                                                                placeholder="Sample Output"
+   589→                                                                className="resize-none"
+   590→                                                                {...field}
+   591→                                                            />
+   592→                                                        </FormControl>
+   593→                                                        <FormMessage />
+   594→                                                        <div className="w-[10%] h-full">
+   595→                                                            <div className={`${getStatusColor(testCaseStatus.sample2)} h-[3rem] w-[3rem] flex justify-center items-center rounded-md text-white`}>
+   596→                                                                {getStatusIcon(testCaseStatus.sample2)}
+   597→                                                            </div>
+   598→                                                        </div>
+   599→                                                    </div>
+   600→                                                </FormItem>
+   601→                                            )}
+   602→                                        />
+   603→                                    </div>
+   604→                                    <div className="grid gap-1">
+   605→                                        <FormField
+   606→                                            control={form.control}
+   607→                                            name="topic"
+   608→                                            render={({ field }) => (
+   609→                                                <FormItem>
+   610→                                                    <FormLabel>Topic</FormLabel>
+   611→                                                    <FormControl>
+   612→                                                        <Input
+   613→                                                            {...field}
+   614→                                                            disabled={isLoading}
+   615→                                                            placeholder="(optional)"
+   616→                                                            type="text"
+   617→                                                            autoComplete='false'
+   618→                                                        />
+   619→                                                    </FormControl>
+   620→                                                    <FormMessage />
+   621→                                                </FormItem>
+   622→                                            )}
+   623→                                        />
+   624→                                    </div>
+   625→
+   626→                                    <div className="grid gap-1">
+   627→                                        <FormField
+   628→                                            control={form.control}
+   629→                                            name="subtopic"
+   630→                                            render={({ field }) => (
+   631→                                                <FormItem>
+   632→                                                    <FormLabel>Sub Topic</FormLabel>
+   633→                                                    <FormControl>
+   634→                                                        <Input
+   635→                                                            {...field}
+   636→                                                            disabled={isLoading}
+   637→                                                            placeholder="(optional)"
+   638→                                                            type="text"
+   639→                                                            autoComplete='false'
+   640→                                                        />
+   641→                                                    </FormControl>
+   642→                                                    <FormMessage />
+   643→                                                </FormItem>
+   644→                                            )}
+   645→                                        />
+   646→                                    </div>
+   647→                                    <div className="grid gap-1 row-span-3 col-span-1 h-full">
+   648→                                        <FormField
+   649→                                            control={form.control}
+   650→                                            name="inputconstrains"
+   651→                                            render={({ field }) => (
+   652→                                                <FormItem>
+   653→                                                    <FormLabel>Input Constrains</FormLabel>
+   654→                                                    <div className="flex flex-row justify-center items-center">
+   655→                                                        <FormControl>
+   656→                                                            <Textarea
+   657→                                                                disabled={isLoading}
+   658→                                                                placeholder="(optional)"
+   659→                                                                className="resize-none h-full"
+   660→                                                                {...field}
+   661→                                                            />
+   662→                                                        </FormControl>
+   663→                                                        <FormMessage />
+   664→                                                    </div>
+   665→                                                </FormItem>
+   666→                                            )}
+   667→                                        />
+   668→                                    </div>
+   669→                                    {/* blacklist: '',
+   670→                                    whitelist: '' */}
+   671→                                    <div className="grid gap-1">
+   672→                                        <FormField
+   673→                                            control={form.control}
+   674→                                            name="blacklist"
+   675→                                            render={({ field }) => (
+   676→                                                <FormItem>
+   677→                                                    <FormLabel>Blacklist</FormLabel>
+   678→                                                    <FormControl>
+   679→                                                        <Input
+   680→                                                            {...field}
+   681→                                                            disabled={isLoading}
+   682→                                                            placeholder="use ',' between keywords. (optional)"
+   683→                                                            type="text"
+   684→                                                            autoComplete='false'
+   685→
+   686→                                                            className="bg-red-600/5"
+   687→                                                        />
+   688→                                                    </FormControl>
+   689→                                                    <FormMessage />
+   690→                                                </FormItem>
+   691→                                            )}
+   692→                                        />
+   693→                                    </div>
+   694→
+   695→                                    <div className="grid gap-1">
+   696→                                        <FormField
+   697→                                            control={form.control}
+   698→                                            name="whitelist"
+   699→                                            render={({ field }) => (
+   700→                                                <FormItem>
+   701→                                                    <FormLabel>Whitelist</FormLabel>
+   702→                                                    <FormControl>
+   703→                                                        <Input
+   704→                                                            {...field}
+   705→                                                            disabled={isLoading}
+   706→                                                            placeholder="use ',' between keywords. (optional)"
+   707→                                                            type="text"
+   708→                                                            autoComplete='false'
+   709→
+   710→                                                            className="bg-green-600/5"
+   711→                                                        />
+   712→                                                    </FormControl>
+   713→                                                    <FormMessage />
+   714→                                                </FormItem>
+   715→                                            )}
+   716→                                        />
+   717→                                    </div>
+   718→                                </div>
+   719→                            </form>
+   720→                        </Form>
+   721→                        <div className="flex col-span-3 gap-1 justify-center mt-4">
+   722→                            <FormError message={error} />
+   723→                            <FormSuccess message={success} />
+   724→                            {hidesubmit ? (
+   725→                                <div className="flex flex-col items-center gap-1">
+   726→                                    <Button disabled={testProcess} className="w-1/3 bg-orange-500 hover:bg-orange-600 " onClick={RunCode} >
+   727→                                        {testProcess && (
+   728→                                            <LoaderIcon className="ml-2 animate-spin" />
+   729→                                        )}
+   730→                                        Run Test Cases
+   731→                                    </Button>
+   732→                                    {selectedLang && (
+   733→                                        <LanguageVersionSelect
+   734→                                            lang={selectedLang}
+   735→                                            value={runVersionProfileId ?? getInitialVersionProfileId(selectedLang)}
+   736→                                            onChange={(profileId) => {
+   737→                                                setRunVersionProfileId(profileId);
+   738→                                                setStoredVersionForLang(selectedLang, profileId);
+   739→                                            }}
+   740→                                            className="w-[280px]"
+   741→                                            disabled={testProcess}
+   742→                                        />
+   743→                                    )}
+   744→                                </div>
+   745→                            ) : (
+   746→                                <Button disabled={isLoading} className="w-1/3" onClick={form.handleSubmit(handleSubmit)}>
+   747→                                    {isLoading && (
+   748→                                        <LoaderIcon className="mr-2 h-4 w-4 animate-spin" />
+   749→                                    )}
+   750→                                    Create Question
+   751→                                </Button>
+   752→                            )}
+   753→                        </div>
+   754→                    </div>
+   755→
+   756→                </DialogContent>
+   757→            </Dialog >
+   758→        </>
+   759→    )
+   760→}
+   761→
+   762→export default AddQuestion

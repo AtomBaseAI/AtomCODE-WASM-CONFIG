@@ -1,0 +1,162 @@
+
+// import OnlineStatus from '@/hooks/NetworkDector';
+import Image from 'next/image';
+import { Separator } from '@/components/ui/separator'
+
+
+const AssessmentCodeQuestion = ({ Question }: { Question: any }) => {
+    return (
+        <>
+            <div className='h-full w-full flex flex-col relative'>
+                <div className='h-full w-full overflow-y-auto p-6'>
+                    <div className='border rounded-md text-xs w-20 text-center font-semibold text-primary border-primary my-2'>
+                        Question
+                    </div>
+                    <div className='text-2xl font-bold'>
+                        {Question.title}
+                    </div>
+                    <Separator className='my-4' />
+                    <div className='border rounded-md text-xs w-20 text-center font-semibold text-primary border-primary my-2'>
+                        Description
+                    </div>
+                    <div className='text-md font-normal text-pretty break-words'>
+                        {Question.description}
+                    </div>
+                    {Question?.referenceimg && (
+                        <div className="relative w-full h-[300px]">
+                            <Image src={Question?.referenceimg} alt={Question?.title} fill
+                                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                                className="object-fill" />
+                        </div>
+                    )}
+                    {Question.inputconstrains &&
+                        (
+                            <>
+                                <Separator className='my-4' />
+                                <div className='border rounded-md text-xs w-40 text-center font-semibold text-primary border-primary my-2'>
+                                    Input Constrains
+                                </div>
+                                <div className='flex flex-grow flex-row justify-around items-center w-full py-2'>
+                                    <div className='bg-gray-700/30 w-full h-[110px] rounded-md p-2 font-bold overflow-y-auto overflow-x-auto'>
+                                        <pre>
+                                            {Question.inputconstrains}
+                                        </pre>
+                                    </div>
+
+                                </div>
+                            </>
+                        )
+                    }
+                    {
+                        (Question.blacklist || Question.whitelist) &&
+                        (
+                            <>
+                                <Separator className='my-4' />
+                                <div className='w-full flex flex-col'>
+                                    <div className='border rounded-md text-xs w-40 text-center font-semibold text-primary border-primary my-2'>
+                                        Blacklist / Whitelist
+                                    </div>
+                                    <div className='flex flex-row w-full gap-[2%]'>
+                                        {
+                                            Question.blacklist &&
+                                            (
+                                                <div className='flex flex-col w-[48%] justify-start items-center'>
+                                                    <div className='mt-2 text-primary w-full justify-start font-bold'>
+                                                        Black list
+                                                    </div>
+                                                    <div className='flex flex-grow flex-row justify-start items-center w-full py-2'>
+                                                        <div className='bg-gray-700/30 h-[110px] w-full rounded-md p-2 font-semibold overflow-y-auto overflow-x-auto'>
+                                                            {Question.blacklist.split(",").map((item: string, index: number) => (
+                                                                <span key={index} className="inline-block px-2 py-1 m-3 text-red-500 border border-red-500 rounded-md">
+                                                                    {item.trim()}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )
+                                        }
+
+                                        {
+                                            Question.whitelist &&
+                                            (
+                                                <div className='flex flex-col w-[48%] justify-start items-center'>
+                                                    <div className='mt-2 text-primary w-full justify-start font-bold'>
+                                                        White list
+                                                    </div>
+                                                    <div className='flex flex-grow flex-row justify-start items-center w-full py-2'>
+                                                        <div className='bg-gray-700/30 h-[110px] w-full rounded-md p-2 font-semibold overflow-y-auto overflow-x-auto'>
+                                                            {Question.whitelist.split(",").map((item: string, index: number) => (
+                                                                <span key={index} className="inline-block px-2 py-1 m-3 text-green-500 border border-green-500 rounded-md">
+                                                                    {item.trim()}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )
+                                        }
+                                    </div>
+                                </div>
+                            </>
+                        )
+                    }
+                    <Separator className='my-4' />
+                    <div className='border rounded-md text-xs w-40 text-center font-semibold text-primary border-primary my-2'>
+                        Sample Testcases
+                    </div>
+                    <div className='mt-2 font-bold px-2'>
+                        Sample Testcase 1
+                    </div>
+                    <div className='w-full flex flex-row flex-grow pb-1'>
+                        <div className='text-primary w-[50%] h-[20px] px-2 font-bold'>
+                            Sample Input
+                        </div>
+                        <div className='text-primary w-[50%] h-[20px] px-2 font-bold'>
+                            Sample Output
+                        </div>
+                    </div>
+                    <div className='flex flex-grow flex-row justify-around items-center w-full py-2'>
+                        <div className='bg-gray-700/30 w-[48%] h-[110px] rounded-md p-2 font-bold overflow-y-auto overflow-x-auto'>
+                            <pre>
+                                {Question.sampleinput1}
+                            </pre>
+                        </div>
+                        <Separator orientation='vertical' className='mx-2' />
+                        <div className='bg-gray-700/30 w-[48%] h-[110px] rounded-md p-2 font-bold overflow-y-auto overflow-x-auto'>
+                            <pre>
+                                {Question.sampleoutput1}
+                            </pre>
+                        </div>
+                    </div>
+                    <div className='mt-2 font-bold px-2'>
+                        Sample Testcase 2
+                    </div>
+                    <div className='w-full flex flex-row flex-grow pb-1'>
+                        <div className='text-primary w-[50%] h-[20px] px-2 font-bold'>
+                            Sample Input
+                        </div>
+                        <div className='text-primary w-[50%] h-[20px] px-2 font-bold'>
+                            Sample Output
+                        </div>
+                    </div>
+                    <div className='flex flex-grow flex-row justify-around items-center w-full py-2'>
+                        <div className='bg-gray-700/30 w-[48%] h-[110px] rounded-md p-2 font-bold overflow-y-auto overflow-x-auto'>
+                            <pre>
+                                {Question.sampleinput2}
+                            </pre>
+                        </div>
+                        <Separator orientation='vertical' className='mx-2' />
+                        <div className='bg-gray-700/30 w-[48%] h-[110px] rounded-md p-2 font-bold overflow-y-auto overflow-x-auto'>
+                            <pre>
+                                {Question.sampleoutput2}
+                            </pre>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </>
+    )
+}
+export default AssessmentCodeQuestion

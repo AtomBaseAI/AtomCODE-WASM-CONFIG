@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: http: https:; script-src 'self'; frame-src https: http:; connect-src 'self' http: https:;" />
+  <title>AtomCode Student</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- ======================= LOGIN VIEW ======================= -->
+    <div id="view-login" class="login-wrap hidden">
+      <div class="card shadow-lg-card login-card">
+        <div class="row" style="gap:0.875rem; flex-wrap:nowrap;">
+          <div class="login-logo">⚛</div>
+          <div>
+            <h1 style="font-size:1.25rem; font-weight:700;">AtomCode Student</h1>
+            <p class="muted small">Sign in with your student account</p>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="login-server">Server address</label>
+          <input id="login-server" class="inp" type="text" spellcheck="false" placeholder="http://localhost:3000" />
+        </div>
+        <div class="field">
+          <label for="login-email">Email</label>
+          <input id="login-email" class="inp" type="email" spellcheck="false" placeholder="student@atom.com" />
+        </div>
+        <div class="field">
+          <label for="login-password">Password</label>
+          <input id="login-password" class="inp" type="password" placeholder="••••••••" />
+        </div>
+
+        <button id="login-btn" class="btn btn-primary btn-block">Sign In</button>
+        <div id="login-error" class="alert alert-error hidden"></div>
+        <p class="muted small center">Desktop client for students · staff &amp; admins use the web app</p>
+      </div>
+    </div>
+
+    <!-- ======================= APP SHELL ======================= -->
+    <div id="view-shell" class="shell hidden">
+      <aside class="sidebar">
+        <div style="display:flex; flex-direction:column; flex:1; min-height:0;">
+          <nav class="side-nav" id="side-nav">
+            <button class="side-link active" data-view="dashboard" title="Dashboard" data-tip="Dashboard" data-icon="dashboard"></button>
+            <button class="side-link" data-view="courses" title="Courses" data-icon="book"></button>
+            <button class="side-link" data-view="lab" title="Labs" data-icon="laptop"></button>
+            <button class="side-link" data-view="assessments" title="Assessments" data-icon="flask"></button>
+          </nav>
+          <div class="side-footer">
+            <button class="side-link" id="theme-toggle" title="Toggle theme" data-icon="sun"></button>
+            <button class="side-link" data-view="settings" title="Settings" data-icon="settings"></button>
+          </div>
+        </div>
+      </aside>
+
+      <div class="main-col">
+        <header class="topbar">
+          <button class="user-btn" id="user-btn">
+            <span class="user-meta">
+              <span class="nm" id="tb-name">Student</span>
+              <span class="em" id="tb-email">student@atom.com</span>
+            </span>
+            <span class="avatar" id="tb-avatar">S</span>
+          </button>
+          <div class="divider">
+            <button class="btn btn-ghost btn-sm" id="logout-btn" title="Log out" data-icon="logout"></button>
+          </div>
+        </header>
+        <div class="content">
+          <section id="view" class="view-holder"><!-- injected --></section>
+        </div>
+      </div>
+    </div>
+
+    <!-- overlays -->
+    <div id="modal-backdrop" class="modal-backdrop hidden">
+      <div class="modal" id="modal-box"></div>
+    </div>
+    <div id="sheet-backdrop" class="sheet-backdrop hidden">
+      <div class="sheet" id="sheet-box"></div>
+    </div>
+    <div id="practice-root" class="practice-root hidden"></div>
+    <div id="toast-holder" class="toast-holder"></div>
+  </div>
+
+  <!-- Built-in code execution engine (bundled runtimes; same as web) -->
+  <script src="engine/atom-engine.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

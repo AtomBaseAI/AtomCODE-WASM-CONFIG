@@ -1,0 +1,1018 @@
+     1→Technical Design Document: Multi-Language WebAssembly Playground in Next.js 16
+     2→Client-side execution · No Docker · No external compiler APIs · Version-aware language runtimes
+     3→
+     4→1. Purpose and scope
+     5→Build a multi-language coding playground and assessment editor using Next.js 16, TypeScript, Web Workers, WebAssembly, and browser-native execution.
+     6→
+     7→The application must execute student programs locally, return standard output and errors, support stdin where practical, enforce execution timeouts, and allow users to select a language and version.
+     8→
+     9→Supported language families
+    10→
+    11→Language
+    12→
+    13→Client-side execution approach
+    14→
+    15→Feasibility
+    16→
+    17→JavaScript
+    18→
+    19→Browser JavaScript engine
+    20→
+    21→Native
+    22→
+    23→TypeScript
+    24→
+    25→TypeScript transpilation followed by JavaScript execution
+    26→
+    27→Native workflow
+    28→
+    29→Python
+    30→
+    31→Pyodide / CPython in Wasm
+    32→
+    33→Strong for supported Python versions and packages
+    34→
+    35→Ruby
+    36→
+    37→ruby.wasm / CRuby Wasm build
+    38→
+    39→Good for supported Ruby versions and gems
+    40→
+    41→SQLite
+    42→
+    43→SQLite compiled to Wasm
+    44→
+    45→Strong for local SQL execution
+    46→
+    47→Key constraint: supporting a language does not mean supporting every release of that language. A runtime generally supports a defined set of versions. If you want multiple versions, you must bundle or build a compatible compiler/runtime for each version, with the necessary libraries and tooling.
+    48→
+    49→2. What “all versions” means
+    50→There are three distinct version dimensions:
+    51→
+    52→Language version: for example, Python 3.11 versus Python 3.13.
+    53→
+    54→Compiler version: for example, different TypeScript compiler releases.
+    55→
+    56→Runtime/standard-library version: for example, the Python runtime or Ruby standard library.
+    57→
+    58→These are not interchangeable. A Python 3.13 runtime does not automatically provide Python 3.11 behavior, and a Java 21 runtime does not automatically provide a Java 8 source compiler.
+    59→
+    60→A practical version selector should offer only combinations that you have actually packaged and tested. For each combination, maintain a manifest containing its exact version, asset paths, runtime requirements, and supported features.
+    61→
+    62→3. Version support policy
+    63→You asked to support all possible versions of every language. There is no practical way to bundle every historical and current version of all possible versions of the selected language runtimes into a single browser application. Some versions have no maintained browser-compatible build, and runtime assets can still be large.
+    64→
+    65→Instead, implement version profiles: each selectable version corresponds to a tested runtime and compiler combination. Add versions as you build and test their assets.
+    66→
+    67→3.1 Recommended initial version profiles
+    68→The following is a proposed development matrix, not a claim that every listed combination already has a complete browser-ready runtime.
+    69→
+    70→Language
+    71→
+    72→Initial profiles to investigate
+    73→
+    74→Implementation notes
+    75→
+    76→JavaScript
+    77→
+    78→ES2015+ through the supported browser engine
+    79→
+    80→ECMAScript feature support depends on the browser
+    81→
+    82→TypeScript
+    83→
+    84→Pinned TypeScript compiler releases
+    85→
+    86→The compiler transpiles to JavaScript; it doesn't provide a separate runtime
+    87→
+    88→Python
+    89→
+    90→3.11, 3.12, 3.13, 3.14 where available
+    91→
+    92→Each profile needs a matching Pyodide build or another compatible runtime
+    93→
+    94→Ruby
+    95→
+    96→3.2, 3.3, 3.4, 4.0 where available
+    97→
+    98→ruby.wasm publishes distinct versioned builds; package availability varies
+    99→
+   100→SQLite
+   101→
+   102→Pinned SQLite Wasm release
+   103→
+   104→SQLite's engine version is distinct from SQL language features
+   105→
+   106→The Ruby project documents version-specific Wasm packages; package availability varies by release. 
+   107→
+   108→ruby.github.io
+   109→ CheerpJ currently documents Java 8, 11, and 17 support, but Java 17 support should be checked against the exact runtime release and requirements. 
+   110→
+   111→CheerpJ Documentation
+   112→+1
+   113→ Pyodide and webR likewise publish versioned runtime releases rather than providing every language version in a single runtime. 
+   114→
+   115→GitHub
+   116→+1
+   117→
+   118→3.2 Store the exact version metadata
+   119→Use a registry that records what is actually installed, rather than inventing support for versions that don't have a built runtime.
+   120→
+   121→
+   122→export type LanguageId =
+   123→  | "python"
+   124→  | "ruby"
+   125→  | "javascript"
+   126→  | "typescript"
+   127→  | "sqlite"
+   128→  | "r";
+   129→
+   130→export type ExecutionMode =
+   131→  | "browser-native"
+   132→  | "transpile"
+   133→  | "wasm-runtime"
+   134→  | "wasm-compiler"
+   135→  | "database";
+   136→
+   137→export interface RuntimeProfile {
+   138→  id: string;
+   139→  language: LanguageId;
+   140→  label: string;
+   141→  languageVersion: string;
+   142→  compilerVersion?: string;
+   143→  runtimeVersion: string;
+   144→  mode: ExecutionMode;
+   145→  workerUrl: string;
+   146→  verified: boolean;
+   147→  features: {
+   148→    stdin: boolean;
+   149→    packages: boolean;
+   150→    persistentState: boolean;
+   151→  };
+   152→}
+   153→
+   154→export const runtimeProfiles: RuntimeProfile[] = [
+   155→  {
+   156→    id: "javascript-browser",
+   157→    language: "javascript",
+   158→    label: "JavaScript",
+   159→    languageVersion: "Browser-supported ECMAScript",
+   160→    runtimeVersion: "Browser engine",
+   161→    mode: "browser-native",
+   162→    workerUrl: "/workers/javascript.worker.js",
+   163→    verified: true,
+   164→    features: {
+   165→      stdin: false,
+   166→      packages: false,
+   167→      persistentState: false,
+   168→    },
+   169→  },
+   170→  {
+   171→    id: "typescript-5",
+   172→    language: "typescript",
+   173→    label: "TypeScript",
+   174→    languageVersion: "5.x",
+   175→    compilerVersion: "Pin an exact TypeScript release",
+   176→    runtimeVersion: "Browser engine",
+   177→    mode: "transpile",
+   178→    workerUrl: "/workers/typescript.worker.js",
+   179→    verified: false,
+   180→    features: {
+   181→      stdin: false,
+   182→      packages: false,
+   183→      persistentState: false,
+   184→    },
+   185→  },
+   186→  {
+   187→    id: "python-3.13",
+   188→    language: "python",
+   189→    label: "Python 3.13",
+   190→    languageVersion: "3.13",
+   191→    runtimeVersion: "Matching Pyodide build required",
+   192→    mode: "wasm-runtime",
+   193→    workerUrl: "/workers/python.worker.js",
+   194→    verified: false,
+   195→    features: {
+   196→      stdin: false,
+   197→      packages: true,
+   198→      persistentState: false,
+   199→    },
+   200→  },
+   201→];
+   202→
+   203→The example intentionally marks TypeScript and Python profiles as unverified until you pin, package, and test their real compiler/runtime assets. Add one profile for every verified combination.
+   204→
+   205→4. Install the Next.js dependencies
+   206→Start with a Next.js 16 App Router project using TypeScript.
+   207→
+   208→npx create-next-app@latest wasm-playground
+   209→cd wasm-playground
+   210→
+   211→Install the general-purpose dependencies:
+   212→
+   213→npm install typescript pyodide @sqlite.org/sqlite-wasm
+   214→npm install @monaco-editor/react
+   215→
+   216→Install Ruby packages only for the Ruby versions you intend to ship. For example, the ruby.wasm project provides versioned packages such as @ruby/3.4-wasm-wasi; confirm the package and API against its current documentation before wiring it into the app. 
+   217→
+   218→ruby.github.io
+   219→
+   220→Build-time versus runtime networking: npm installation downloads packages during development/build. That is compatible with your requirement: the running application does not need to call a third-party compiler API. For full self-hosting, package runtime assets under your own origin and configure all runtime loaders to use local paths.
+   221→
+   222→5. Recommended project structure
+   223→
+   224→wasm-playground/
+   225→├── public/
+   226→│   ├── runtimes/
+   227→│   │   ├── pyodide/
+   228→│   │   ├── ruby/
+   229→│   │   └── sqlite/
+   230→│   └── workers/
+   231→│       └── runtime-loader.js
+   232→├── scripts/
+   233→│   └── copy-runtime-assets.mjs
+   234→├── src/
+   235→│   ├── app/
+   236→│   │   └── playground/
+   237→│   │       └── page.tsx
+   238→│   ├── components/
+   239→│   │   └── playground/
+   240→│   │       ├── Playground.tsx
+   241→│   │       ├── CodeEditor.tsx
+   242→│   │       ├── OutputPanel.tsx
+   243→│   │       └── LanguageSelector.tsx
+   244→│   ├── lib/
+   245→│   │   ├── runtime-registry.ts
+   246→│   │   ├── execution-types.ts
+   247→│   │   └── execution-manager.ts
+   248→│   └── workers/
+   249→│       ├── javascript.worker.ts
+   250→│       ├── typescript.worker.ts
+   251→│       ├── python.worker.ts
+   252→│       ├── ruby.worker.ts
+   253→│       └── sqlite.worker.ts
+   254→├── next.config.ts
+   255→└── package.json
+   256→These are integration points, not a claim that each worker is implemented merely because the file exists. Compiler and runtime workers must be connected to real, compatible assets.
+   257→
+   258→6. Define a shared execution protocol
+   259→Every worker should use the same request and response contract so the UI doesn't need language-specific logic.
+   260→
+   261→Create src/lib/execution-types.ts:
+   262→
+   263→
+   264→import type { LanguageId } from "./runtime-registry";
+   265→
+   266→export interface RunRequest {
+   267→  type: "run";
+   268→  executionId: string;
+   269→  language: LanguageId;
+   270→  versionProfileId: string;
+   271→  code: string;
+   272→  stdin?: string;
+   273→  timeoutMs?: number;
+   274→}
+   275→
+   276→export interface RunResult {
+   277→  type: "result";
+   278→  executionId: string;
+   279→  stdout: string;
+   280→  stderr: string;
+   281→  compileTimeMs?: number;
+   282→  executionTimeMs?: number;
+   283→  exitCode?: number;
+   284→}
+   285→
+   286→export interface RunError {
+   287→  type: "error";
+   288→  executionId: string;
+   289→  message: string;
+   290→  stage: "loading" | "compile" | "execute";
+   291→}
+   292→
+   293→export type WorkerResponse = RunResult | RunError;
+   294→
+   295→Protocol rules
+   296→Every execution receives a unique ID.
+   297→
+   298→Compilation errors go to stderr or a structured error response.
+   299→
+   300→Runtime output goes to stdout.
+   301→
+   302→Runtime diagnostics go to stderr.
+   303→
+   304→The UI owns the execution timeout and can terminate the worker.
+   305→
+   306→A worker must not execute code for a profile whose assets have not been verified.
+   307→
+   308→Stdin should be implemented explicitly; don't pretend that browser prompt() is equivalent to terminal input.
+   309→
+   310→7. Create the execution manager
+   311→Create src/lib/execution-manager.ts:
+   312→
+   313→
+   314→import type {
+   315→  RunRequest,
+   316→  WorkerResponse,
+   317→} from "./execution-types";
+   318→
+   319→export function executeInWorker(
+   320→  worker: Worker,
+   321→  request: RunRequest,
+   322→): Promise<WorkerResponse> {
+   323→  return new Promise((resolve, reject) => {
+   324→    let settled = false;
+   325→
+   326→    const timeoutMs = Math.min(
+   327→      Math.max(request.timeoutMs ?? 5000, 100),
+   328→      30_000,
+   329→    );
+   330→
+   331→    const timer = setTimeout(() => {
+   332→      if (settled) return;
+   333→      settled = true;
+   334→      worker.terminate();
+   335→      reject(new Error("Execution timed out."));
+   336→    }, timeoutMs);
+   337→
+   338→    worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+   339→      const response = event.data;
+   340→
+   341→      if (response.executionId !== request.executionId) return;
+   342→      if (settled) return;
+   343→
+   344→      settled = true;
+   345→      clearTimeout(timer);
+   346→      resolve(response);
+   347→    };
+   348→
+   349→    worker.onerror = (event) => {
+   350→      if (settled) return;
+   351→
+   352→      settled = true;
+   353→      clearTimeout(timer);
+   354→      reject(new Error(event.message || "Worker failed."));
+   355→    };
+   356→
+   357→    worker.postMessage(request);
+   358→  });
+   359→}
+   360→
+   361→For a simple prototype, create a worker per run. For large runtimes, maintain a worker pool or a reusable worker per session—but terminate the worker when the user cancels, a timeout occurs, or the runtime becomes unresponsive.
+   362→
+   363→A timeout is only effective if the controlling UI can terminate the worker. It does not interrupt a synchronous infinite loop running on the UI thread.
+   364→
+   365→8. JavaScript worker: the simplest complete integration
+   366→Create src/workers/javascript.worker.ts:
+   367→
+   368→
+   369→import type {
+   370→  RunRequest,
+   371→  WorkerResponse,
+   372→} from "../lib/execution-types";
+   373→
+   374→self.onmessage = (event: MessageEvent<RunRequest>) => {
+   375→  const request = event.data;
+   376→
+   377→  if (request.type !== "run") return;
+   378→
+   379→  const output: string[] = [];
+   380→  const errors: string[] = [];
+   381→  const started = performance.now();
+   382→
+   383→  try {
+   384→    // This basic implementation captures console output.
+   385→    // It is a learning playground, not a hardened sandbox.
+   386→    const originalLog = console.log;
+   387→    const originalError = console.error;
+   388→
+   389→    console.log = (...args: unknown[]) => {
+   390→      output.push(args.map(String).join(" "));
+   391→    };
+   392→
+   393→    console.error = (...args: unknown[]) => {
+   394→      errors.push(args.map(String).join(" "));
+   395→    };
+   396→
+   397→    try {
+   398→      // Use Function only in the isolated worker, never on the UI thread.
+   399→      // This does not provide a complete security boundary.
+   400→      new Function(request.code)();
+   401→    } finally {
+   402→      console.log = originalLog;
+   403→      console.error = originalError;
+   404→    }
+   405→
+   406→    const response: WorkerResponse = {
+   407→      type: "result",
+   408→      executionId: request.executionId,
+   409→      stdout: output.join("\n"),
+   410→      stderr: errors.join("\n"),
+   411→      executionTimeMs: performance.now() - started,
+   412→      exitCode: 0,
+   413→    };
+   414→
+   415→    self.postMessage(response);
+   416→  } catch (error) {
+   417→    const response: WorkerResponse = {
+   418→      type: "error",
+   419→      executionId: request.executionId,
+   420→      message:
+   421→        error instanceof Error ? error.message : String(error),
+   422→      stage: "execute",
+   423→    };
+   424→
+   425→    self.postMessage(response);
+   426→  }
+   427→};
+   428→
+   429→This is a starter implementation for ordinary JavaScript exercises. For production, use a fresh worker per execution to prevent shared global state from leaking across runs. Also capture rejected promises and asynchronous console output if your exercises use async JavaScript.
+   430→
+   431→Security: a Worker is not a complete security boundary. Student code can still consume resources, and code that executes in a worker may access APIs available in that worker's global scope. Restrict the environment and avoid exposing credentials, sensitive data, or privileged capabilities.
+   432→
+   433→9. TypeScript worker: transpile, then execute
+   434→TypeScript is not executed directly by browsers. The TypeScript compiler removes types and emits JavaScript. Its transpileModule API supports this single-file transpilation workflow. 
+   435→
+   436→GitHub
+   437→
+   438→Create src/workers/typescript.worker.ts:
+   439→
+   440→
+   441→import ts from "typescript";
+   442→import type {
+   443→  RunRequest,
+   444→  WorkerResponse,
+   445→} from "../lib/execution-types";
+   446→
+   447→self.onmessage = (event: MessageEvent<RunRequest>) => {
+   448→  const request = event.data;
+   449→  if (request.type !== "run") return;
+   450→
+   451→  const compiled = ts.transpileModule(request.code, {
+   452→    fileName: "student.ts",
+   453→    reportDiagnostics: true,
+   454→    compilerOptions: {
+   455→      target: ts.ScriptTarget.ES2022,
+   456→      module: ts.ModuleKind.None,
+   457→      strict: true,
+   458→    },
+   459→  });
+   460→
+   461→  const errors = (compiled.diagnostics ?? [])
+   462→    .filter((diagnostic) =>
+   463→      diagnostic.category === ts.DiagnosticCategory.Error
+   464→    )
+   465→    .map((diagnostic) =>
+   466→      ts.flattenDiagnosticMessageText(
+   467→        diagnostic.messageText,
+   468→        "\n",
+   469→      )
+   470→    );
+   471→
+   472→  if (errors.length > 0) {
+   473→    const response: WorkerResponse = {
+   474→      type: "error",
+   475→      executionId: request.executionId,
+   476→      message: errors.join("\n"),
+   477→      stage: "compile",
+   478→    };
+   479→
+   480→    self.postMessage(response);
+   481→    return;
+   482→  }
+   483→
+   484→  try {
+   485→    // In production, send compiled.outputText to a separate,
+   486→    // disposable JavaScript execution worker.
+   487→    const runner = new Worker(
+   488→      new URL("./javascript.worker.ts", import.meta.url),
+   489→    );
+   490→
+   491→    runner.onmessage = (result) => {
+   492→      self.postMessage(result.data);
+   493→      runner.terminate();
+   494→    };
+   495→
+   496→    runner.postMessage({
+   497→      ...request,
+   498→      language: "javascript",
+   499→      code: compiled.outputText,
+   500→    });
+   501→  } catch (error) {
+   502→    const response: WorkerResponse = {
+   503→      type: "error",
+   504→      executionId: request.executionId,
+   505→      message:
+   506→        error instanceof Error ? error.message : String(error),
+   507→      stage: "execute",
+   508→    };
+   509→
+   510→    self.postMessage(response);
+   511→  }
+   512→};
+   513→
+   514→This demonstrates the workflow, but it is not a complete TypeScript IDE compiler. transpileModule does not provide full project-wide type checking, and a worker created inside another worker may require bundler-specific handling. For multi-file TypeScript projects and full diagnostics, implement a compiler host or run the compiler service in a dedicated worker.
+   515→
+   516→For stronger isolation, send the transpiled output to a fresh JavaScript worker rather than evaluating it in the compiler worker.
+   517→
+   518→10. Python integration using Pyodide
+   519→Pyodide runs CPython compiled to WebAssembly and supports a selection of Python packages. Its bundled Python version is determined by the Pyodide release; package compatibility must be checked for that release. 
+   520→
+   521→GitHub
+   522→+1
+   523→
+   524→10.1 Install and bundle the runtime
+   525→npm install pyodide
+   526→
+   527→For fully self-hosted operation, copy the complete runtime distribution—including its Wasm binary, JavaScript loader, standard-library archive, and required package files—into a versioned public directory, for example:
+   528→
+   529→public/runtimes/pyodide/0.29.5/
+   530→
+   531→Don't copy only the npm entry-point JavaScript. Inspect the installed package and confirm that the runtime assets are available locally.
+   532→
+   533→Pin the exact release in package.json and your runtime manifest.
+   534→
+   535→10.2 Python worker
+   536→Create src/workers/python.worker.ts:
+   537→
+   538→
+   539→import { loadPyodide } from "pyodide";
+   540→import type { RunRequest } from "../lib/execution-types";
+   541→
+   542→let pyodidePromise: ReturnType<typeof loadPyodide> | undefined;
+   543→
+   544→function getPyodide() {
+   545→  pyodidePromise ??= loadPyodide({
+   546→    // Serve the matching Pyodide distribution from your own origin.
+   547→    indexURL: "/runtimes/pyodide/0.29.5/",
+   548→  });
+   549→
+   550→  return pyodidePromise;
+   551→}
+   552→
+   553→self.onmessage = async (event: MessageEvent<RunRequest>) => {
+   554→  const request = event.data;
+   555→  if (request.type !== "run") return;
+   556→
+   557→  const stdout: string[] = [];
+   558→  const stderr: string[] = [];
+   559→  const started = performance.now();
+   560→
+   561→  try {
+   562→    const pyodide = await getPyodide();
+   563→
+   564→    pyodide.setStdout({
+   565→      batched: (text: string) => stdout.push(text),
+   566→    });
+   567→
+   568→    pyodide.setStderr({
+   569→      batched: (text: string) => stderr.push(text),
+   570→    });
+   571→
+   572→    pyodide.globals.set("student_source", request.code);
+   573→
+   574→    await pyodide.runPythonAsync(`
+   575→exec(compile(student_source, "<student>", "exec"))
+   576→`);
+   577→
+   578→    self.postMessage({
+   579→      type: "result",
+   580→      executionId: request.executionId,
+   581→      stdout: stdout.join(""),
+   582→      stderr: stderr.join(""),
+   583→      executionTimeMs: performance.now() - started,
+   584→      exitCode: 0,
+   585→    });
+   586→  } catch (error) {
+   587→    self.postMessage({
+   588→      type: "error",
+   589→      executionId: request.executionId,
+   590→      message:
+   591→        error instanceof Error ? error.message : String(error),
+   592→      stage: "execute",
+   593→    });
+   594→  }
+   595→};
+   596→
+   597→This is a baseline for simple Python scripts. Verify that the installed Pyodide release exports the APIs shown and that its distribution is laid out as expected.
+   598→
+   599→For timeouts, run Python in a disposable worker and terminate it when execution exceeds the limit. Python code can enter an infinite loop, so a timeout implemented only inside the Python script is not sufficient.
+   600→
+   601→10.3 Python version support
+   602→Keep each Python version in a separate runtime profile, such as:
+   603→
+   604→python-3.11
+   605→
+   606→python-3.12
+   607→
+   608→python-3.13
+   609→
+   610→python-3.14, only when the selected Pyodide release supports it
+   611→
+   612→Don't simply change indexURL to a different path and assume the runtime is compatible. Every profile must point to an actual release and pass tests for imports, output, exceptions, and standard-library behavior.
+   613→
+   614→11. SQLite integration
+   615→SQLite is a local relational database engine that can run in a browser through WebAssembly. It is a good fit for offline SQL exercises, but it is not MySQL: syntax, functions, data types, and behavior can differ. 
+   616→
+   617→SQLite
+   618→+1
+   619→
+   620→11.1 SQLite worker design
+   621→Install the official package:
+   622→
+   623→npm install @sqlite.org/sqlite-wasm
+   624→
+   625→Keep the database inside a dedicated worker. The worker should initialize SQLite once, create an in-memory database for each exercise or session, and expose a query interface.
+   626→
+   627→Your adapter should support this contract:
+   628→
+   629→export interface SqlQueryResult {
+   630→  columns: string[];
+   631→  rows: Record<string, unknown>[];
+   632→  changes?: number;
+   633→  error?: string;
+   634→}
+   635→
+   636→export interface SqlRuntime {
+   637→  initialize(): Promise<void>;
+   638→  execute(sql: string): Promise<SqlQueryResult>;
+   639→  reset(): Promise<void>;
+   640→}
+   641→
+   642→For a full implementation, use the official SQLite Wasm package's documented worker initialization and database API. Its loading options and supported browser storage mechanisms should be checked against the exact version you pin; don't assume the package's initialization API is interchangeable with other SQLite Wasm builds. 
+   643→
+   644→SQLite
+   645→
+   646→11.2 SQL exercise behavior
+   647→Implement the following features:
+   648→
+   649→Create the schema from the exercise definition.
+   650→
+   651→Insert starter data before running the student's query.
+   652→
+   653→Render column names and rows in a result grid.
+   654→
+   655→Reset the database between independent attempts.
+   656→
+   657→Compare results using assessment-specific normalization rules.
+   658→
+   659→Optionally persist practice data in browser storage, with a clear reset option.
+   660→
+   661→For MySQL-specific assessments, a SQLite adapter should be labeled as a compatibility mode—not as a genuine MySQL runtime.
+   662→
+   663→12. Ruby integration using ruby.wasm
+   664→The ruby.wasm project publishes CRuby builds for WebAssembly, including version-specific WASI packages. Its documented packages include Ruby 3.2, 3.3, 3.4, and 4.0. Some standard-library extensions and native gems are not available in every build; networking and threading are also constrained in the WASI target. 
+   665→
+   666→ruby.github.io
+   667→+1
+   668→
+   669→Integration steps
+   670→Pin a package such as @ruby/3.4-wasm-wasi.
+   671→
+   672→Read its current API documentation and examples.
+   673→
+   674→Package its Wasm runtime, JavaScript glue, and standard-library files locally.
+   675→
+   676→Create a Ruby worker that initializes the runtime once and executes student source.
+   677→
+   678→Capture stdout, stderr, exit status, and Ruby exceptions.
+   679→
+   680→Test each Ruby version separately.
+   681→
+   682→The worker adapter should expose the shared execution protocol. Do not assume Ruby's WASI package has the same initialization API as Pyodide; use the package's documented loader and execution interface.
+   683→
+   684→13. Runtime and language feature matrix
+   685→Use this as a product-planning matrix; the exact feature coverage depends on the pinned runtime profile.
+   686→
+   687→Language
+   688→
+   689→Compile source in browser?
+   690→
+   691→Execute locally?
+   692→
+   693→Key constraint
+   694→
+   695→JavaScript
+   696→
+   697→Not required
+   698→
+   699→Yes
+   700→
+   701→Browser engine and restricted execution context
+   702→
+   703→TypeScript
+   704→
+   705→Transpile first
+   706→
+   707→Yes, as JavaScript
+   708→
+   709→Type checking and multi-file imports need more tooling
+   710→
+   711→Python
+   712→
+   713→No separate compilation step for ordinary scripts
+   714→
+   715→Yes
+   716→
+   717→Supported Pyodide build and packages
+   718→
+   719→Ruby
+   720→
+   721→Usually interpreted by the Wasm runtime
+   722→
+   723→Yes
+   724→
+   725→Gem and native extension coverage
+   726→
+   727→SQLite
+   728→
+   729→No general-purpose source compiler needed
+   730→
+   731→Yes
+   732→
+   733→SQLite is not MySQL
+   734→
+   735→14. Build the Next.js playground UI
+   736→Create src/app/playground/page.tsx:
+   737→
+   738→
+   739→import Playground from "@/components/playground/Playground";
+   740→
+   741→export default function PlaygroundPage() {
+   742→  return <Playground />;
+   743→}
+   744→
+   745→Create src/components/playground/Playground.tsx:
+   746→
+   747→
+   748→"use client";
+   749→
+   750→import { useState } from "react";
+   751→import { runtimeProfiles } from "@/lib/runtime-registry";
+   752→
+   753→export default function Playground() {
+   754→  const [profileId, setProfileId] = useState("javascript-browser");
+   755→  const [code, setCode] = useState(
+   756→    'console.log("Hello from the browser!");'
+   757→  );
+   758→  const [output, setOutput] = useState("");
+   759→  const [busy, setBusy] = useState(false);
+   760→
+   761→  const profile = runtimeProfiles.find(
+   762→    (item) => item.id === profileId
+   763→  );
+   764→
+   765→  async function run() {
+   766→    if (!profile) {
+   767→      setOutput("Runtime profile not found.");
+   768→      return;
+   769→    }
+   770→
+   771→    if (!profile.verified) {
+   772→      setOutput(
+   773→        "This runtime profile has not been verified yet."
+   774→      );
+   775→      return;
+   776→    }
+   777→
+   778→    setBusy(true);
+   779→    setOutput("");
+   780→
+   781→    const worker = new Worker(profile.workerUrl);
+   782→    const executionId = crypto.randomUUID();
+   783→
+   784→    const timeout = setTimeout(() => {
+   785→      worker.terminate();
+   786→      setOutput("Execution timed out.");
+   787→      setBusy(false);
+   788→    }, 5000);
+   789→
+   790→    worker.onmessage = (event) => {
+   791→      const response = event.data;
+   792→
+   793→      if (response.executionId !== executionId) return;
+   794→
+   795→      clearTimeout(timeout);
+   796→      worker.terminate();
+   797→      setBusy(false);
+   798→
+   799→      if (response.type === "error") {
+   800→        setOutput(response.message);
+   801→      } else {
+   802→        setOutput(
+   803→          [
+   804→            response.stdout,
+   805→            response.stderr,
+   806→          ].filter(Boolean).join("\n")
+   807→        );
+   808→      }
+   809→    };
+   810→
+   811→    worker.onerror = (event) => {
+   812→      clearTimeout(timeout);
+   813→      worker.terminate();
+   814→      setBusy(false);
+   815→      setOutput(event.message || "Worker error.");
+   816→    };
+   817→
+   818→    worker.postMessage({
+   819→      type: "run",
+   820→      executionId,
+   821→      language: profile.language,
+   822→      versionProfileId: profile.id,
+   823→      code,
+   824→      timeoutMs: 5000,
+   825→    });
+   826→  }
+   827→
+   828→  return (
+   829→    <main className="mx-auto max-w-5xl space-y-4 p-6">
+   830→      <h1 className="text-2xl font-bold">
+   831→        WebAssembly Playground
+   832→      </h1>
+   833→
+   834→      <label className="block space-y-2">
+   835→        <span>Language / runtime version</span>
+   836→        <select
+   837→          className="w-full rounded border p-2"
+   838→          value={profileId}
+   839→          onChange={(event) => setProfileId(event.target.value)}
+   840→        >
+   841→          {runtimeProfiles.map((item) => (
+   842→            <option key={item.id} value={item.id}>
+   843→              {item.label} — {item.languageVersion}
+   844→              {!item.verified ? " (not configured)" : ""}
+   845→            </option>
+   846→          ))}
+   847→        </select>
+   848→      </label>
+   849→
+   850→      <label className="block space-y-2">
+   851→        <span>Source code</span>
+   852→        <textarea
+   853→          className="min-h-72 w-full rounded border bg-neutral-950 p-4 font-mono text-sm text-white"
+   854→          value={code}
+   855→          onChange={(event) => setCode(event.target.value)}
+   856→          spellCheck={false}
+   857→        />
+   858→      </label>
+   859→
+   860→      <button
+   861→        className="rounded bg-blue-600 px-5 py-2 text-white disabled:opacity-50"
+   862→        disabled={busy || !profile?.verified}
+   863→        onClick={run}
+   864→      >
+   865→        {busy ? "Running..." : "Run code"}
+   866→      </button>
+   867→
+   868→      <section className="space-y-2">
+   869→        <h2 className="font-semibold">Output</h2>
+   870→        <pre className="min-h-24 overflow-auto whitespace-pre-wrap rounded bg-neutral-900 p-4 text-sm text-white">
+   871→          {output || "Output will appear here."}
+   872→        </pre>
+   873→      </section>
+   874→    </main>
+   875→  );
+   876→}
+   877→
+   878→This is the UI shell and demonstrates the execution flow for workers that are built and served at the paths in the manifest. It is not a claim that every language is now executable: you must provide the corresponding worker bundles, and a Next.js worker may need to be constructed with new URL(..., import.meta.url) so that the bundler can resolve it correctly. For packaged third-party runtimes, use their documented worker-loading strategy.
+   879→
+   880→For production, use a Monaco Editor component, a proper stdin panel, a separate compiler diagnostics view, and a language-specific starter template. Add explicit cancellation and ensure every state update is guarded against a previous execution finishing late.
+   881→
+   882→15. Hosting assets locally and working offline
+   883→Your requirement excludes external APIs, so all compiler/runtime assets must be served from your own application or bundled into it.
+   884→
+   885→Asset hosting
+   886→Place static runtime assets in versioned directories under public/runtimes/.
+   887→
+   888→Use explicit paths in runtime configuration.
+   889→
+   890→Verify that every runtime loader uses your origin rather than a CDN URL.
+   891→
+   892→Include the required license and attribution files for each toolchain.
+   893→
+   894→Pin compiler, standard-library, and runtime versions together.
+   895→
+   896→Test the production build, not only the development server.
+   897→
+   898→Offline operation
+   899→For a genuinely offline experience, first visit must either install/download all required runtime assets or use a deliberately smaller initial runtime set. A service worker can cache the application shell and runtime assets, but it cannot cache files that have never been downloaded.
+   900→
+   901→Next.js deployment also needs to serve Wasm assets with suitable MIME types and compatible headers. If a runtime uses SharedArrayBuffer, the application may require cross-origin isolation headers. Test these requirements against your selected runtime instead of enabling them indiscriminately.
+   902→
+   903→Avoid shipping every runtime immediately
+   904→Python and Ruby runtime bundles can still be sizable; measure them before enabling by default. Bundle or download each verified runtime on demand from your own origin. Show the selected runtime's download status, and persist only approved cacheable assets.
+   905→
+   906→16. Security requirements
+   907→Client-side execution protects your backend from executing the student's program, but it does not make the program safe or the assessment tamper-proof.
+   908→
+   909→Implement these controls:
+   910→
+   911→Worker isolation: run code away from the UI thread and terminate the worker on timeout.
+   912→
+   913→Fresh execution context: use a new worker for each run where possible, especially for JavaScript and TypeScript.
+   914→
+   915→Resource limits: cap execution time, output size, input size, and concurrent workers.
+   916→
+   917→No secrets: never expose API keys, authentication tokens, hidden test cases, or privileged data to the browser runtime.
+   918→
+   919→Restricted capabilities: don't expose privileged host APIs, network access, or sensitive filesystem contents to student code.
+   920→
+   921→Runtime integrity: serve pinned runtime assets with appropriate integrity and cache policies.
+   922→
+   923→Safe output rendering: render program output as text, not injected HTML.
+   924→
+   925→Cancellation: let the user terminate a running program and release its resources.
+   926→
+   927→For JavaScript, WebAssembly, Python, and other browser runtimes, a Worker is primarily a responsiveness and lifecycle boundary—not a complete security sandbox. A determined user controls their own browser and can inspect or modify client-side code.
+   928→
+   929→Assessment implication: this architecture is excellent for local practice and learning. It cannot guarantee secure proctoring or trusted grading when the compiler, runtime, test cases, and expected results all run on a device controlled by the student. Hidden tests and authoritative scores should remain outside the client if they must be protected.
+   930→
+   931→17. Runtime version registry and automated tests
+   932→Maintain a manifest for every supported version. For example:
+   933→
+   934→
+   935→{
+   936→  "id": "python-3.13",
+   937→  "language": "python",
+   938→  "languageVersion": "3.13",
+   939→  "compilerVersion": null,
+   940→  "runtime": {
+   941→    "name": "Pyodide",
+   942→    "version": "PINNED_RELEASE",
+   943→    "basePath": "/runtimes/pyodide/PINNED_RELEASE/"
+   944→  },
+   945→  "capabilities": [
+   946→    "stdout",
+   947→    "stderr",
+   948→    "standard-library"
+   949→  ],
+   950→  "status": "experimental"
+   951→}
+   952→
+   953→Replace PINNED_RELEASE with the exact release you've downloaded and tested. Do not commit placeholder manifests as production configuration.
+   954→
+   955→For each runtime profile, create a conformance test suite covering:
+   956→
+   957→Hello-world output.
+   958→
+   959→Standard input and output, where supported.
+   960→
+   961→Syntax and compilation errors.
+   962→
+   963→Runtime exceptions.
+   964→
+   965→Unicode output.
+   966→
+   967→Infinite-loop timeout.
+   968→
+   969→Large-output handling.
+   970→
+   971→Memory/resource exhaustion behavior.
+   972→
+   973→Standard-library compatibility.
+   974→
+   975→Offline startup after the assets have been cached.
+   976→
+   977→Track test results by language version, compiler version, browser, and operating system.
+   978→
+   979→18. Recommended implementation roadmap
+   980→Phase 1 — Core execution framework
+   981→
+   982→Build the Next.js UI, shared worker protocol, runtime manifest, execution manager, JavaScript and TypeScript workers.
+   983→
+   984→Phase 2 — Interpreted and database runtimes
+   985→
+   986→Integrate Pyodide and SQLite Wasm using pinned local assets. Add ruby.wasm only after measuring its download size and memory use.
+   987→
+   988→Phase 3 — Resource and compatibility validation
+   989→
+   990→Measure startup time, memory usage, output limits, and runtime asset sizes on target devices.
+   991→
+   992→Phase 4 — Offline and reliability testing
+   993→
+   994→Verify locally hosted assets, caching, cancellation, timeout enforcement, memory use, and compatibility across browsers.
+   995→
+   996→19. Official documentation
+   997→Use these as the source of truth when pinning versions and implementing the language adapters.
+   998→
+   999→Pyodide documentation — Python runtime and package support.
+  1000→
+  1001→ruby.wasm documentation — Ruby Wasm packages, versions, and limitations.
+  1002→
+  1003→
+  1004→
+  1005→SQLite Wasm documentation — SQLite initialization and browser APIs.
+  1006→
+  1007→TypeScript documentation — TypeScript compiler and transpilation.
+  1008→
+  1009→
+  1010→
+  1011→
+  1012→Next.js documentation — App Router, workers, and production deployment.
+  1013→
+  1014→Final recommendation
+  1015→Build the runtime framework first and make every language version an explicit, testable profile. Start with JavaScript, TypeScript, Python, and SQLite. Add Ruby only if its runtime size, memory footprint, and package limitations fit your target devices.
+  1016→
+  1017→This lean scope focuses on JavaScript, TypeScript, Python, SQLite, and optionally Ruby. It omits heavier compiler/runtime stacks that can demand more memory, configuration, and bundled assets. No Docker and no external execution APIs are achievable, but supporting every version of every retained language is not a realistic guarantee. Ship only versions for which you can provide and maintain a complete, locally hosted runtime/compiler combination.
+  1018→

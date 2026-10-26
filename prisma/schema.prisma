@@ -1,0 +1,386 @@
+// AtomCode — unified schema (Admin + Staff + Student)
+// Ported from AtomCode-Repatch (PostgreSQL) to SQLite.
+// Optimizations vs. original: dropped unused SuperAdmin & malformed Account
+// models (credentials + JWT auth only), added safe defaults, no @db.Text.
+//
+// Naming note: CodeQuestion is the coding-question entity (source code, sample
+// inputs, hidden test cases, blacklist/whitelist). MCQQuestion stays separate.
+// QuestionGroup is a lightweight question-bank folder: questions may live in
+// at most one group; deleting a group keeps its questions (they become
+// ungrouped via onDelete: SetNull).
+// @@map keeps the original physical table names so the existing SQLite data
+// and foreign keys remain untouched.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id       String  @id @default(cuid())
+  name     String?
+  email    String  @unique
+  image    String?
+  password String
+}
+
+model Staff {
+  id          String        @id @default(cuid())
+  name        String?
+  email       String        @unique
+  phone       String?
+  image       String?
+  department  String?
+  staffnumber String?
+  password    String
+  StaffCourse StaffCourse[]
+}
+
+model User {
+  id                     String                   @id @default(cuid())
+  name                   String?
+  department             String?
+  section                String?
+  batch                  String?
+  rollnumber             String?
+  github                 String?
+  linkedin               String?
+  email                  String                   @unique
+  phone                  String?
+  emailVerified          DateTime?
+  image                  String?
+  password               String
+  isActive               Boolean                  @default(true)
+  isTwoFactorEnabled     Boolean                  @default(false)
+  userCourses            UserCourse[]
+  userModuleData         UserModuleData[]
+  userMCQData            UserMCQData[]
+  userCodeQuestionData   UserCodeQuestionData[]
+  userAssessmentMCQData  userAssessmentMCQData[]
+  userAssessmentCodeData userAssessmentCodeData[]
+  UserAssessmentData     UserAssessmentData[]
+}
+
+model Course {
+  id                 String               @id @default(uuid())
+  title              String
+  startdate          DateTime
+  enddate            DateTime
+  language           String
+  userCourses        UserCourse[]
+  staffCourses       StaffCourse[]
+  assessments        Assessments[]
+  modules            Module[]
+  userModuleData     UserModuleData[]
+  feedbacks          Feedbacks[]
+  UserAssessmentData UserAssessmentData[]
+}
+
+model Feedbacks {
+  id       String   @id @default(uuid())
+  courseId String
+  title    String
+  link     String
+  date     DateTime
+  Course   Course?  @relation(fields: [courseId], references: [id])
+
+  @@index([courseId])
+}
+
+model Module {
+  id                   String                 @id @default(uuid())
+  title                String
+  courseId             String
+  course               Course                 @relation(fields: [courseId], references: [id])
+  moduledate           DateTime
+  modulestatus         String
+  language             String
+  maxscore             Int
+  concepturl           String?
+  mcqQuestions         MCQQuestion[]
+  codeQuestions        CodeQuestion[]
+  userModuleData       UserModuleData[]
+  userMCQData          UserMCQData[]
+  userCodeQuestionData UserCodeQuestionData[]
+  reference            ModuleReferences[]
+
+  @@index([courseId])
+}
+
+model ModuleReferences {
+  id       String  @id @default(uuid())
+  title    String
+  link     String
+  type     String
+  Module   Module? @relation(fields: [moduleId], references: [id])
+  moduleId String?
+
+  @@index([moduleId])
+}
+
+model UserModuleData {
+  id                 String  @id @default(uuid())
+  userId             String
+  courseId           String
+  moduleId           String
+  mcqtime            Int?
+  mcqstatus          String?
+  usermcqscore       Int?
+  totalmcqscore      Int?
+  questiontime       Int?
+  questionstatus     String?
+  userquestionscore  Int?
+  totalquestionscore Int?
+  errors             Int?
+  compiles           Int?
+  modulemaxscore     Int?
+  modulestatus       String
+  user               User    @relation(fields: [userId], references: [id])
+  course             Course  @relation(fields: [courseId], references: [id])
+  module             Module  @relation(fields: [moduleId], references: [id])
+
+  @@index([userId, courseId, moduleId])
+  @@index([courseId])
+  @@index([moduleId])
+}
+
+model CodeQuestion {
+  id                     String                   @id @default(uuid())
+  title                  String
+  description            String
+  moduleId               String?
+  module                 Module?                  @relation(fields: [moduleId], references: [id])
+  sampleinput1           String
+  sampleinput2           String
+  sampleoutput1          String
+  sampleoutput2          String
+  input1                 String
+  input2                 String
+  input3                 String
+  output1                String
+  output2                String
+  output3                String
+  sourcecode             String?
+  referenceimg           String?
+  maxscore               Int
+  difficulty             String
+  lang                   String
+  topic                  String?
+  subtopic               String?
+  inputconstrains        String?
+  blacklist              String?
+  whitelist              String?
+  userCodeQuestionData   UserCodeQuestionData[]
+  userAssessmentCodeData userAssessmentCodeData[]
+  Assessments            Assessments?             @relation(fields: [assessmentsId], references: [id])
+  assessmentsId          String?
+  questionGroupId        String?
+  questionGroup          QuestionGroup?           @relation(fields: [questionGroupId], references: [id], onDelete: SetNull)
+
+  @@index([moduleId])
+  @@index([assessmentsId])
+  @@index([questionGroupId])
+  // Physical table keeps its original name — no data migration needed.
+  @@map("Question")
+}
+
+model QuestionGroup {
+  id          String         @id @default(uuid())
+  title       String
+  description String?
+  createdAt   DateTime       @default(now())
+  questions   CodeQuestion[]
+
+  @@index([title])
+}
+
+model UserCodeQuestionData {
+  id              String       @id @default(uuid())
+  userId          String
+  questionId      String       @default(cuid())
+  moduleId        String
+  score           Int
+  compiles        Int
+  errors          Int
+  submissiontype  String
+  tabswitches     Int
+  status          String
+  usercode        String?
+  duration        String?
+  testcase1status String?
+  testcase2status String?
+  testcase3status String?
+  user            User         @relation(fields: [userId], references: [id])
+  codeQuestion    CodeQuestion @relation(fields: [questionId], references: [id])
+  module          Module       @relation(fields: [moduleId], references: [id])
+
+  @@unique([userId, questionId])
+  @@index([moduleId])
+  @@index([userId, moduleId])
+  // Physical table keeps its original name — no data migration needed.
+  @@map("UserQuestionData")
+}
+
+model MCQQuestion {
+  id            String       @id @default(uuid())
+  title         String
+  description   String
+  topic         String?
+  subtopic      String?
+  Option1       String
+  Option2       String
+  Option3       String
+  Option4       String
+  CorrectOption Int
+  moduleId      String?
+  referenceimg  String?
+  codesnippet   String?
+  iscodesnippet Boolean
+  module        Module?      @relation(fields: [moduleId], references: [id])
+  Assessments   Assessments? @relation(fields: [assessmentsId], references: [id])
+  assessmentsId String?
+
+  @@index([moduleId])
+  @@index([assessmentsId])
+}
+
+model UserMCQData {
+  id             String  @id @default(uuid())
+  userId         String
+  moduleId       String
+  score          Int
+  errors         Int
+  submissiontype String
+  tabswitches    Int
+  status         String
+  duration       String?
+  user           User    @relation(fields: [userId], references: [id])
+  module         Module  @relation(fields: [moduleId], references: [id])
+
+  @@index([userId, moduleId])
+  @@index([moduleId])
+}
+
+model StaffCourse {
+  id       String  @id @default(uuid())
+  staffId  String
+  courseId String
+  active   Boolean
+  staff    Staff   @relation(fields: [staffId], references: [id])
+  course   Course  @relation(fields: [courseId], references: [id])
+
+  @@index([staffId])
+  @@index([courseId])
+}
+
+model UserCourse {
+  id                   String  @id @default(uuid())
+  userId               String
+  courseId             String
+  active               Boolean
+  completionPercentage Float
+  user                 User    @relation(fields: [userId], references: [id])
+  course               Course  @relation(fields: [courseId], references: [id])
+
+  @@index([userId])
+  @@index([courseId])
+}
+
+model Assessments {
+  id                     String                   @id @default(uuid())
+  title                  String
+  date                   DateTime
+  accesskey              Int
+  language               String
+  courseId               String
+  maxtime                String
+  active                 Boolean
+  maxscore               Int
+  tabswitches            Int
+  course                 Course                   @relation(fields: [courseId], references: [id])
+  mcqQuestions           MCQQuestion[]
+  codeQuestions          CodeQuestion[]
+  UserAssessmentData     UserAssessmentData[]
+  userAssessmentMCQData  userAssessmentMCQData[]
+  userAssessmentCodeData userAssessmentCodeData[]
+
+  @@index([courseId])
+}
+
+model userAssessmentMCQData {
+  id             String      @id @default(uuid())
+  userId         String
+  assessmentId   String
+  score          Int
+  errors         Int
+  submissiontype String
+  status         String
+  duration       String?
+  user           User        @relation(fields: [userId], references: [id])
+  assessments    Assessments @relation(fields: [assessmentId], references: [id])
+
+  @@index([userId, assessmentId])
+  @@index([assessmentId])
+}
+
+model userAssessmentCodeData {
+  id              String       @id @default(uuid())
+  userId          String
+  questionId      String       @default(cuid())
+  assessmentId    String
+  score           Int
+  compiles        Int
+  errors          Int
+  submissiontype  String
+  status          String
+  usercode        String?
+  duration        String?
+  testcase1status String?
+  testcase2status String?
+  testcase3status String?
+  user            User         @relation(fields: [userId], references: [id])
+  codeQuestion    CodeQuestion @relation(fields: [questionId], references: [id])
+  assessments     Assessments  @relation(fields: [assessmentId], references: [id])
+
+  @@unique([userId, questionId])
+  @@index([assessmentId])
+  @@index([userId, assessmentId])
+}
+
+model UserAssessmentData {
+  id                      String      @id @default(uuid())
+  userId                  String
+  courseId                String
+  assessmentId            String
+  mcqtime                 Int?
+  mcqstatus               String?
+  usermcqscore            Int?
+  totalmcqscore           Int?
+  questiontime            Int?
+  questionstatus          String?
+  userquestionscore       Int?
+  totalquestionscore      Int?
+  errors                  Int?
+  compiles                Int?
+  assessmentmaxscore      Int?
+  assessmentstarttime     String
+  userassessmentstarttime String
+  usertabswitches         Int
+  maxtabswitches          Int
+  submissiontype          String?
+  status                  String
+  maxtime                 String
+  userduration            String?
+  user                    User        @relation(fields: [userId], references: [id])
+  course                  Course      @relation(fields: [courseId], references: [id])
+  assessments             Assessments @relation(fields: [assessmentId], references: [id])
+
+  @@index([userId])
+  @@index([assessmentId])
+  @@index([userId, assessmentId])
+  @@index([courseId])
+}

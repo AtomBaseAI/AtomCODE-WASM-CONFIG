@@ -1,0 +1,88 @@
+{
+  "name": "atomcode-student-desktop",
+  "productName": "AtomCode Student",
+  "version": "1.0.0",
+  "description": "Electron desktop client for the AtomCode student portal (courses, practice, assessments, results).",
+  "main": "main.js",
+  "homepage": "https://github.com/AtomBaseAI/AtomCode-Repatch",
+  "author": {
+    "name": "AtomCode",
+    "email": "support@atomcode.dev"
+  },
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --enable-logging",
+    "sync:engine": "node scripts/sync-engine-assets.mjs",
+    "selftest": "node scripts/selftest-node.mjs",
+    "prebuild": "node scripts/sync-engine-assets.mjs",
+    "preexport": "node scripts/sync-engine-assets.mjs",
+    "build": "electron-builder --dir",
+    "export": "electron-builder",
+    "export:linux": "electron-builder --linux",
+    "export:win": "electron-builder --win",
+    "export:mac": "electron-builder --mac",
+    "export:all": "electron-builder --linux --win --mac"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.atomcode.student",
+    "productName": "AtomCode Student",
+    "asar": true,
+    "compression": "normal",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "package.json"
+    ],
+    "linux": {
+      "icon": "renderer/assets/icon.png",
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Education",
+      "synopsis": "AtomCode student desktop client",
+      "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
+    },
+    "win": {
+      "icon": "renderer/assets/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "AtomCode Student"
+    },
+    "mac": {
+      "icon": "renderer/assets/icon.png",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.education",
+      "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
+    }
+  }
+}

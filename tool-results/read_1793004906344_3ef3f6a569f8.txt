@@ -1,0 +1,693 @@
+     1→     1→"use client"
+     2→     2→import { Button } from '@/components/ui/button';
+     3→     3→import { ArrowLeft, Loader, Minimize, Maximize, LogOut, FileQuestion } from 'lucide-react';
+     4→     4→import { useTheme } from 'next-themes';
+     5→     5→import { ThemeToggle } from "@/components/theme-toggle";
+     6→     6→import {
+     7→     7→    ResizableHandle,
+     8→     8→    ResizablePanel,
+     9→     9→    ResizablePanelGroup,
+    10→    10→} from "@/components/ui/resizable";
+    11→    11→import CodeQuestion from '@/components/code/code-question';
+    12→    12→import { useEffect, useState, useTransition } from 'react'
+    13→    13→import CodeMirror from '@uiw/react-codemirror';
+    14→    14→import { vscodeDark } from '@uiw/codemirror-theme-vscode';
+    15→    15→import { eclipse } from '@uiw/codemirror-theme-eclipse';
+    16→    16→import { Check, LoaderIcon, Play, X } from 'lucide-react';
+    17→    17→import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+    18→    18→import { toast } from "sonner"
+    19→    19→import { Separator } from '../ui/separator';
+    20→    20→import { useRouter } from 'next/navigation';
+    21→    21→import { autocompletion, Completion, CompletionSource } from "@codemirror/autocomplete";
+    22→    22→import { enterFullscreen, exitFullscreen, fullscreenCheck } from '@/hooks/fullscreen'
+    23→    23→
+    24→    24→interface CodeQuestion {
+    25→    25→    id: string;
+    26→    26→    title: string;
+    27→    27→    description: string;
+    28→    28→    moduleId: string | null;
+    29→    29→    sampleinput1: string;
+    30→    30→    sampleinput2: string;
+    31→    31→    sampleoutput1: string;
+    32→    32→    sampleoutput2: string;
+    33→    33→    input1: string;
+    34→    34→    input2: string;
+    35→    35→    input3: string;
+    36→    36→    output1: string;
+    37→    37→    output2: string;
+    38→    38→    output3: string;
+    39→    39→    sourcecode: string | null;
+    40→    40→    referenceimg: string | null;
+    41→    41→    maxscore: number;
+    42→    42→    difficulty: string;
+    43→    43→    lang: string;
+    44→    44→    topic: string | null;
+    45→    45→    subtopic: string | null;
+    46→    46→    inputconstrains: string | null;
+    47→    47→    blacklist: string | null;
+    48→    48→    whitelist: string | null;
+    49→    49→}
+    50→    50→
+    51→    51→
+    52→    52→const CodeView = ({ questions, mid, cid, }: { questions: CodeQuestion[], mid: string, cid: string }) => {
+    53→    53→    const { theme } = useTheme();
+    54→    54→    const [questionData, setQuestionData] = useState<CodeQuestion[]>(questions);
+    55→    55→    const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+    56→    56→
+    57→    57→    const handleQuestionClick = (index: number) => {
+    58→    58→        resetEditorState();
+    59→    59→        setCurrentQuestionIndex(index);
+    60→    60→    };
+    61→    61→
+    62→    62→    const resetEditorState = () => {
+    63→    63→        setUserCode(`// code here ! `);
+    64→    64→        // setOutput('');
+    65→    65→        setOutputData(null);
+    66→    66→        setSamplesuccess(false);
+    67→    67→        setShowSubmit(false);
+    68→    68→        setisSubmitted(false);
+    69→    69→        setTestcase1Status("");
+    70→    70→        setTestcase2Status("");
+    71→    71→        setTestcase3Status("");
+    72→    72→        setCompileCount(0);
+    73→    73→        setErrorCount(0);
+    74→    74→        setExecuting(false);
+    75→    75→        setExecutingTestcases(false);
+    76→    76→        setScore(0)
+    77→    77→        setScore1(0)
+    78→    78→        setScore2(0)
+    79→    79→        setScore3(0)
+    80→    80→    };
+    81→    81→    const currentQuestion = questionData[currentQuestionIndex];
+    82→    82→
+    83→    83→    const [showModal, setShowModal] = useState(false)
+    84→    84→    const [executing, setExecuting] = useState(false)
+    85→    85→    const [executingTestcases, setExecutingTestcases] = useState(false)
+    86→    86→    const [RunTestModel, setRunTestModel] = useState(false)
+    87→    87→    const [error, setError] = useState(false)
+    88→    88→    const [samplesuccess, setSamplesuccess] = useState(false)
+    89→    89→    const [outputData, setOutputData] = useState(null)
+    90→    90→    const [userCode, setUserCode] = useState(`// code here ! \n\n`)
+    91→    91→    const [showSubmit, setShowSubmit] = useState(false)
+    92→    92→    const [isSubmitted, setisSubmitted] = useState(false)
+    93→    93→    const [testcase1Status, setTestcase1Status] = useState<string>("")
+    94→    94→    const [testcase2Status, setTestcase2Status] = useState<string>("")
+    95→    95→    const [testcase3Status, setTestcase3Status] = useState<string>("")
+    96→    96→    const [compileCount, setCompileCount] = useState<number>(0)
+    97→    97→    const [errorCount, setErrorCount] = useState<number>(0)
+    98→    98→    const [routeBtnLoading, setRouteBtnLoading] = useState<boolean>(false)
+    99→    99→    const [score, setScore] = useState<number>(0);
+   100→   100→    const [score1, setScore1] = useState<number>(0);
+   101→   101→    const [score2, setScore2] = useState<number>(0);
+   102→   102→    const [score3, setScore3] = useState<number>(0);
+   103→   103→    const router = useRouter()
+   104→   104→
+   105→   105→    const RunCode = async () => {
+   106→   106→        const blacklist = currentQuestion.blacklist
+   107→   107→            ?.split(",")
+   108→   108→            .map(item => item.trim())
+   109→   109→            .filter(item => item !== "") || [];
+   110→   110→
+   111→   111→        const whitelist = currentQuestion.whitelist
+   112→   112→            ?.split(",")
+   113→   113→            .map(item => item.trim())
+   114→   114→            .filter(item => item !== "") || [];
+   115→   115→
+   116→   116→        // Check for blacklist
+   117→   117→        const blacklistFound = blacklist.some((keyword) => userCode.includes(keyword));
+   118→   118→        if (blacklistFound) {
+   119→   119→            toast.error("Blacklist keyword(s) found in the code!");
+   120→   120→            return;
+   121→   121→        }
+   122→   122→        // Check for whitelist
+   123→   123→        const whitelistMissing = whitelist.some((keyword) => !userCode.includes(keyword));
+   124→   124→        if (whitelistMissing) {
+   125→   125→            toast.error("Whitelist keyword(s) missing in the code!");
+   126→   126→            return;
+   127→   127→        }
+   128→   128→        setCompileCount(compileCount + 1);
+   129→   129→        localStorage.setItem(currentQuestion.id, userCode);
+   130→   130→        const SingleCompileURL = `${process.env.NEXT_PUBLIC_LAMBDA_URL}/${currentQuestion.lang}`;
+   131→   131→
+   132→   132→        try {
+   133→   133→            let data = {
+   134→   134→                code: userCode,
+   135→   135→                input: currentQuestion.sampleinput1,
+   136→   136→                expected_output: currentQuestion.sampleoutput1,
+   137→   137→            };
+   138→   138→            // console.log(data.code)
+   139→   139→            setShowModal(true);
+   140→   140→            setExecuting(true);
+   141→   141→            if (!SingleCompileURL) {
+   142→   142→                throw new Error("Server Error");
+   143→   143→            }
+   144→   144→            const response = await fetch(SingleCompileURL, {
+   145→   145→                method: "POST",
+   146→   146→                headers: {
+   147→   147→                    "Content-Type": "application/json",
+   148→   148→                },
+   149→   149→                body: JSON.stringify(data),
+   150→   150→            });
+   151→   151→            if (!response.ok) {
+   152→   152→                throw new Error(`HTTP error! status: ${response.status}`);
+   153→   153→            }
+   154→   154→            const res = await response.json();
+   155→   155→            if (res.data.compileMessage === "Success") {
+   156→   156→                toast.success("Sample Testcase Passed");
+   157→   157→                setOutputData(res.data.output);
+   158→   158→                setSamplesuccess(true);
+   159→   159→                if (score === 0) {
+   160→   160→                    setScore(score + 1);
+   161→   161→                }
+   162→   162→            } else if (res.data.compileMessage === "Failed") {
+   163→   163→                toast.error("Sample Testcase Failed!");
+   164→   164→                setSamplesuccess(false);
+   165→   165→                setErrorCount(errorCount + 1);
+   166→   166→                setOutputData(res.data.output);
+   167→   167→                setShowSubmit(false)
+   168→   168→            } else if (res.data.compileMessage === "Error") {
+   169→   169→                toast.error("Compilation Error!");
+   170→   170→                setError(true);
+   171→   171→                setOutputData(res.data.output);
+   172→   172→                setErrorCount(errorCount + 1);
+   173→   173→                setShowSubmit(false)
+   174→   174→                console.log(res.data.output)
+   175→   175→            }
+   176→   176→
+   177→   177→            setExecuting(false);
+   178→   178→        } catch (error) {
+   179→   179→            toast.warning("Something went wrong!");
+   180→   180→            setShowModal(false);
+   181→   181→            setExecuting(false);
+   182→   182→        }
+   183→   183→    };
+   184→   184→
+   185→   185→    const RunTestCases = async () => {
+   186→   186→        setExecutingTestcases(true);
+   187→   187→        setTestcase1Status("")
+   188→   188→        setTestcase2Status("")
+   189→   189→        setTestcase3Status("")
+   190→   190→        setRunTestModel(true);
+   191→   191→        const MultiCompileURL = `${process.env.NEXT_PUBLIC_LAMBDA_MULTI_URL}/${currentQuestion.lang}`
+   192→   192→        const requestData = {
+   193→   193→            code: userCode,
+   194→   194→            input1: currentQuestion.input1,
+   195→   195→            expected_output1: currentQuestion.output1,
+   196→   196→            input2: currentQuestion.input2,
+   197→   197→            expected_output2: currentQuestion.output2,
+   198→   198→            input3: currentQuestion.input3,
+   199→   199→            expected_output3: currentQuestion.output3,
+   200→   200→        };
+   201→   201→        try {
+   202→   202→            const response = await fetch(MultiCompileURL, {
+   203→   203→                method: "POST",
+   204→   204→                headers: {
+   205→   205→                    "Content-Type": "application/json",
+   206→   206→                },
+   207→   207→                body: JSON.stringify(requestData),
+   208→   208→            });
+   209→   209→
+   210→   210→            if (!response.ok) {
+   211→   211→                throw new Error(`HTTP error! status: ${response.status}`);
+   212→   212→            }
+   213→   213→
+   214→   214→            const res = await response.json();
+   215→   215→
+   216→   216→            if (res.data) {
+   217→   217→                setTestcase1Status(res.data.test_case1 === "Success" ? "pass" : "fail");
+   218→   218→                setTestcase2Status(res.data.test_case2 === "Success" ? "pass" : "fail");
+   219→   219→                setTestcase3Status(res.data.test_case3 === "Success" ? "pass" : "fail");
+   220→   220→
+   221→   221→                if (res.data.test_case1 === "Success") {
+   222→   222→                    if (score1 === 0) {
+   223→   223→                        setScore1(score1 + 3);
+   224→   224→                    }
+   225→   225→                }
+   226→   226→                else if (res.data.test_case1 === "Error") {
+   227→   227→                    setErrorCount(errorCount + 1);
+   228→   228→                }
+   229→   229→                if (res.data.test_case2 === "Success") {
+   230→   230→                    if (score2 === 0) {
+   231→   231→                        setScore2(score2 + 3);
+   232→   232→                    }
+   233→   233→                }
+   234→   234→                else if (res.data.test_case2 === "Error") {
+   235→   235→                    setErrorCount(errorCount + 1);
+   236→   236→                }
+   237→   237→                if (res.data.test_case3 === "Success") {
+   238→   238→                    if (score3 === 0) {
+   239→   239→                        setScore3(score3 + 3);
+   240→   240→                    }
+   241→   241→                }
+   242→   242→                else if (res.data.test_case3 === "Error") {
+   243→   243→                    setErrorCount(errorCount + 1);
+   244→   244→                }
+   245→   245→            }
+   246→   246→            setExecutingTestcases(false);
+   247→   247→            setShowSubmit(true);
+   248→   248→        } catch (error) {
+   249→   249→            toast.warning("Something went wrong!");
+   250→   250→            setExecutingTestcases(false);
+   251→   251→            setRunTestModel(false);
+   252→   252→        }
+   253→   253→    };
+   254→   254→
+   255→   255→    const closeTestCaseModel = () => {
+   256→   256→        setShowModal(false);
+   257→   257→        setOutputData(null);
+   258→   258→        setExecutingTestcases(false);
+   259→   259→        setRunTestModel(false);
+   260→   260→    };
+   261→   261→
+   262→   262→    const closeRunModel = () => {
+   263→   263→        setShowModal(false);
+   264→   264→        setError(false)
+   265→   265→        setOutputData(null)
+   266→   266→    }
+   267→   267→
+   268→   268→
+   269→   269→    const submitCode = () => {
+   270→   270→        setRouteBtnLoading(true)
+   271→   271→
+   272→   272→    }
+   273→   273→
+   274→   274→
+   275→   275→    const languageKeywords = {
+   276→   276→        java: [
+   277→   277→            "class",
+   278→   278→            "public",
+   279→   279→            "private",
+   280→   280→            "protected",
+   281→   281→            "static",
+   282→   282→            "void",
+   283→   283→            "main",
+   284→   284→            "int",
+   285→   285→            "String",
+   286→   286→            "boolean",
+   287→   287→            "if",
+   288→   288→            "else",
+   289→   289→            "while",
+   290→   290→            "for",
+   291→   291→            "try",
+   292→   292→            "catch",
+   293→   293→            "finally",
+   294→   294→            "import",
+   295→   295→            "package",
+   296→   296→        ],
+   297→   297→        python: [
+   298→   298→            "def",
+   299→   299→            "class",
+   300→   300→            "import",
+   301→   301→            "from",
+   302→   302→            "as",
+   303→   303→            "if",
+   304→   304→            "elif",
+   305→   305→            "else",
+   306→   306→            "for",
+   307→   307→            "while",
+   308→   308→            "break",
+   309→   309→            "continue",
+   310→   310→            "return",
+   311→   311→            "try",
+   312→   312→            "except",
+   313→   313→            "finally",
+   314→   314→            "with",
+   315→   315→            "lambda",
+   316→   316→            "yield",
+   317→   317→            "print",
+   318→   318→        ],
+   319→   319→        c: [
+   320→   320→            "int",
+   321→   321→            "float",
+   322→   322→            "char",
+   323→   323→            "double",
+   324→   324→            "if",
+   325→   325→            "else",
+   326→   326→            "while",
+   327→   327→            "for",
+   328→   328→            "return",
+   329→   329→            "void",
+   330→   330→            "include",
+   331→   331→            "define",
+   332→   332→            "struct",
+   333→   333→            "union",
+   334→   334→            "enum",
+   335→   335→            "typedef",
+   336→   336→        ],
+   337→   337→        cpp: [
+   338→   338→            "int",
+   339→   339→            "float",
+   340→   340→            "double",
+   341→   341→            "char",
+   342→   342→            "class",
+   343→   343→            "public",
+   344→   344→            "private",
+   345→   345→            "protected",
+   346→   346→            "virtual",
+   347→   347→            "override",
+   348→   348→            "if",
+   349→   349→            "else",
+   350→   350→            "while",
+   351→   351→            "for",
+   352→   352→            "return",
+   353→   353→            "namespace",
+   354→   354→            "include",
+   355→   355→            "template",
+   356→   356→        ],
+   357→   357→    };
+   358→   358→    type SupportedLanguage = keyof typeof languageKeywords;
+   359→   359→
+   360→   360→    const getCustomCompletionSource = (lang: SupportedLanguage): CompletionSource => {
+   361→   361→        const keywords = languageKeywords[lang] || [];
+   362→   362→        return (context) => {
+   363→   363→            const word = context.matchBefore(/\w*/);
+   364→   364→            if (!word || (word.from === word.to && !context.explicit)) return null;
+   365→   365→
+   366→   366→            return {
+   367→   367→                from: word.from,
+   368→   368→                options: keywords.map((keyword) => ({
+   369→   369→                    label: keyword,
+   370→   370→                    type: "keyword",
+   371→   371→                })),
+   372→   372→            };
+   373→   373→        };
+   374→   374→    };
+   375→   375→
+   376→   376→    const [languageExtension, setLanguageExtension] = useState<{
+   377→   377→        extension: any;
+   378→   378→        completion: CompletionSource;
+   379→   379→    } | null>(null);
+   380→   380→
+   381→   381→    const loadLanguageExtension = async (lang: SupportedLanguage) => {
+   382→   382→        switch (lang) {
+   383→   383→            case "java": {
+   384→   384→                const { javaLanguage } = await import("@codemirror/lang-java");
+   385→   385→                return javaLanguage;
+   386→   386→            }
+   387→   387→            case "c":
+   388→   388→            case "cpp": {
+   389→   389→                const { cppLanguage } = await import("@codemirror/lang-cpp");
+   390→   390→                return cppLanguage;
+   391→   391→            }
+   392→   392→            case "python": {
+   393→   393→                const { pythonLanguage } = await import("@codemirror/lang-python");
+   394→   394→                return pythonLanguage;
+   395→   395→            }
+   396→   396→            default:
+   397→   397→                return null;
+   398→   398→        }
+   399→   399→    };
+   400→   400→
+   401→   401→    useEffect(() => {
+   402→   402→        if (
+   403→   403→            currentQuestion?.lang &&
+   404→   404→            ["java", "python", "c", "cpp"].includes(currentQuestion.lang)
+   405→   405→        ) {
+   406→   406→            const lang = currentQuestion.lang as SupportedLanguage;
+   407→   407→            loadLanguageExtension(lang).then((extension) => {
+   408→   408→                setLanguageExtension({
+   409→   409→                    extension,
+   410→   410→                    completion: getCustomCompletionSource(lang),
+   411→   411→                });
+   412→   412→            });
+   413→   413→        }
+   414→   414→    }, [currentQuestion]);
+   415→   415→    const [fullscreen, setFullscreen] = useState(fullscreenCheck())
+   416→   416→
+   417→   417→    useEffect(() => {
+   418→   418→        const handleFullscreenChange = () => setFullscreen(fullscreenCheck())
+   419→   419→
+   420→   420→        document.addEventListener('fullscreenchange', handleFullscreenChange)
+   421→   421→        document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
+   422→   422→        document.addEventListener('mozfullscreenchange', handleFullscreenChange)
+   423→   423→        document.addEventListener('MSFullscreenChange', handleFullscreenChange)
+   424→   424→
+   425→   425→        return () => {
+   426→   426→            document.removeEventListener('fullscreenchange', handleFullscreenChange)
+   427→   427→            document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
+   428→   428→            document.removeEventListener('mozfullscreenchange', handleFullscreenChange)
+   429→   429→            document.removeEventListener('MSFullscreenChange', handleFullscreenChange)
+   430→   430→        }
+   431→   431→    }, [])
+   432→   432→
+   433→   433→    const toggleFullscreen = () => {
+   434→   434→        if (fullscreen) {
+   435→   435→            exitFullscreen()
+   436→   436→        } else {
+   437→   437→            const element = document.documentElement
+   438→   438→            enterFullscreen(element)
+   439→   439→        }
+   440→   440→    }
+   441→   441→    const handleRoute = () => {
+   442→   442→        setRouteBtnLoading(true)
+   443→   443→        router.push('/staff/workspace')
+   444→   444→    }
+   445→   445→    if (!currentQuestion) {
+   446→   446→        return (
+   447→   447→            <main className="flex min-h-screen w-full flex-col items-center justify-center gap-4 px-4">
+   448→   448→                <FileQuestion className="h-14 w-14 text-muted-foreground" />
+   449→   449→                <h1 className="text-lg font-semibold text-center">No questions in this module yet</h1>
+   450→   450→                <p className="text-sm text-muted-foreground text-center max-w-sm">
+   451→   451→                    Questions have not been added to this module, so there is nothing to work on here.
+   452→   452→                </p>
+   453→   453→                <Button onClick={handleRoute} disabled={routeBtnLoading} className="gap-2">
+   454→   454→                    {routeBtnLoading && <Loader className="animate-spin p-1" />}
+   455→   455→                    Back to Workspace
+   456→   456→                </Button>
+   457→   457→            </main>
+   458→   458→        )
+   459→   459→    }
+   460→   460→    return (
+   461→   461→        <main className="flex min-h-screen min-w-screen flex-row">
+   462→   462→            <aside className="sticky top-0 left-0 z-50 hidden sm:flex sm:flex-col w-20 h-screen border-r border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-lg">
+   463→   463→                <div className="flex-grow flex flex-col justify-between">
+   464→   464→                    {/* question queue */}
+   465→   465→                    <nav className="flex flex-col my-4 space-y-4 overflow-y-auto max-h-[calc(100vh-10rem)]">
+   466→   466→                        {questionData.map((question: CodeQuestion, index: number) => (
+   467→   467→                            <Button
+   468→   468→                                key={index}
+   469→   469→                                className={`inline-flex items-center justify-center mx-4 transition-colors border bg-transparent text-primary hover:bg-primary/10 ${currentQuestionIndex === index ? 'bg-primary text-white dark:text-white' : ''}`}
+   470→   470→                                onClick={() => handleQuestionClick(index)}
+   471→   471→                            >
+   472→   472→                                <span className='h-6 w-6 p-0.5 font-bold'>
+   473→   473→                                    {index + 1}
+   474→   474→                                </span>
+   475→   475→                            </Button>
+   476→   476→                        ))}
+   477→   477→                    </nav>
+   478→   478→
+   479→   479→                    <div className="inline-flex flex-col items-center justify-center h-30 w-20 ">
+   480→   480→                        <Button
+   481→   481→                            className="hover:text-primary bg-transparent hover:bg-transparent border-0 shadow-none text-black dark:text-white  cursor-pointer"
+   482→   482→                            size="icon"
+   483→   483→                            onClick={toggleFullscreen}>
+   484→   484→                            {fullscreen ? (
+   485→   485→                                <Minimize className='h-6 w-6 text-primary' />
+   486→   486→                            ) : (
+   487→   487→                                <Maximize className='h-6 w-6' />
+   488→   488→                            )}
+   489→   489→                            <span className="sr-only">Toggle fullscreen</span>
+   490→   490→                        </Button>
+   491→   491→                        <ThemeToggle className="my-4" />
+   492→   492→                        <Button className={`inline-flex items-center justify-center p-3 mx-4 my-1 transition-colors bg-primary`} onClick={handleRoute} disabled={routeBtnLoading}>
+   493→   493→                            <span className='h-6 w-6'>
+   494→   494→                                {
+   495→   495→                                    routeBtnLoading ? <Loader className="animate-spin p-1" /> : <LogOut fill='none' />
+   496→   496→                                }
+   497→   497→                            </span>
+   498→   498→                        </Button>
+   499→   499→                    </div>
+   500→   500→                </div>
+   501→   501→            </aside>
+   502→   502→            <div className="w-full h-full flex flex-col items-center justify-center flex-grow">
+   503→   503→                <div className="h-full w-full flex flex-col mx-4 items-center ">
+   504→   504→                    <ResizablePanelGroup
+   505→   505→                        direction="horizontal"
+   506→   506→                        className="max-w-full max-h-screen rounded-lg border">
+   507→   507→
+   508→   508→                        <ResizablePanel defaultSize={50} minSize={20}>
+   509→   509→                            <div className="flex h-screen items-center justify-center">
+   510→   510→                                <CodeQuestion Question={currentQuestion} />
+   511→   511→                            </div>
+   512→   512→                        </ResizablePanel>
+   513→   513→                        <ResizableHandle withHandle />
+   514→   514→                        <ResizablePanel defaultSize={50} minSize={40}>
+   515→   515→                            <div className="flex h-screen items-center justify-center">
+   516→   516→                                {isSubmitted ? (
+   517→   517→                                    <div className='h-screen w-full overflow-y-auto dark:bg-[#1e1e1e] flex justify-center items-center '>
+   518→   518→                                        Code Submitted !
+   519→   519→                                    </div>
+   520→   520→                                ) : (
+   521→   521→                                    <div className='flex h-screen items-center justify-center w-full flex-col'
+   522→   522→                                    >
+   523→   523→                                        <div className='h-[95%] w-full overflow-y-auto dark:bg-[#1e1e1e] '>
+   524→   524→                                            <CodeMirror
+   525→   525→                                                value={userCode}
+   526→   526→                                                theme={theme === "dark" ? vscodeDark : eclipse}
+   527→   527→                                                extensions={[
+   528→   528→                                                    languageExtension?.extension,
+   529→   529→                                                    languageExtension?.completion &&
+   530→   530→                                                    autocompletion({ override: [languageExtension.completion] }),
+   531→   531→                                                ].filter(Boolean)}
+   532→   532→                                                style={{ fontSize: 16, minHeight: "95%" }}
+   533→   533→                                                onChange={setUserCode}
+   534→   534→                                            />
+   535→   535→                                        </div>
+   536→   536→                                        <div className='h-[5%] w-full border flex items-center justify-center'>
+   537→   537→                                            <div className='flex flex-row w-full items-center justify-start mx-1 p-1 gap-x-2'>
+   538→   538→                                                <Button className='bg-green-500 hover:bg-green-400' onClick={RunCode}>
+   539→   539→                                                    {executing ? (
+   540→   540→                                                        <LoaderIcon className="h-6 w-6 animate-spin" />
+   541→   541→                                                    ) : (
+   542→   542→                                                        <>
+   543→   543→                                                            <Play className='h-6 w-6 mr-2' /> Run
+   544→   544→                                                        </>
+   545→   545→                                                    )}
+   546→   546→                                                </Button>
+   547→   547→                                                {samplesuccess &&
+   548→   548→                                                    <Button className='bg-green-500 hover:bg-green-400' onClick={RunTestCases}>
+   549→   549→                                                        {executingTestcases ? (
+   550→   550→                                                            <LoaderIcon className="h-6 w-6 animate-spin" />
+   551→   551→                                                        ) : (
+   552→   552→                                                            <>
+   553→   553→                                                                <Play className='h-6 w-6 mr-2' /> Run Test Cases
+   554→   554→                                                            </>
+   555→   555→                                                        )}
+   556→   556→                                                    </Button>
+   557→   557→                                                }
+   558→   558→                                            </div>
+   559→   559→                                        </div>
+   560→   560→                                    </div>
+   561→   561→                                )
+   562→   562→                                }
+   563→   563→                            </div>
+   564→   564→                        </ResizablePanel>
+   565→   565→                    </ResizablePanelGroup>
+   566→   566→                </div>
+   567→   567→            </div>
+   568→   568→            <AlertDialog open={showModal}>
+   569→   569→                <AlertDialogContent aria-describedby={undefined}>
+   570→   570→                    <AlertDialogHeader>
+   571→   571→                        <AlertDialogTitle>
+   572→   572→                            <div className='flex flex-row justify-center items-center h-full'>
+   573→   573→
+   574→   574→                                <h2 className='w-1/2 px-2'>Expected Output</h2>
+   575→   575→                                <h2 className='w-1/2 px-2'>Program Output</h2>
+   576→   576→                            </div>
+   577→   577→                        </AlertDialogTitle>
+   578→   578→                        {error ?
+   579→   579→                            (
+   580→   580→                                <div className='bg-gray-700/30 w-full h-[150px] rounded-md p-2 font-bold overflow-y-auto overflow-x-hidden'>
+   581→   581→                                    <pre className='whitespace-pre-wrap break-words overflow-x-auto max-w-full'>
+   582→   582→                                        {outputData}
+   583→   583→                                    </pre>
+   584→   584→                                </div>
+   585→   585→                            )
+   586→   586→                            : (
+   587→   587→                                <div className='flex flex-grow flex-row justify-around items-center w-full py-2'>
+   588→   588→                                    <div className='bg-gray-700/30 w-[48%] h-[150px] rounded-md p-2 font-bold overflow-y-auto overflow-x-hidden'>
+   589→   589→                                        <pre className='whitespace-pre-wrap break-words overflow-x-auto max-w-full'>
+   590→   590→                                            {currentQuestion.sampleoutput1}
+   591→   591→                                        </pre>
+   592→   592→                                    </div>
+   593→   593→                                    <Separator orientation='vertical' className='mx-2' />
+   594→   594→                                    <div className='bg-gray-700/30 w-[48%] h-[150px] rounded-md p-2 font-bold overflow-y-auto overflow-x-hidden'>
+   595→   595→                                        {executing ? (
+   596→   596→                                            <span className='h-full w-full flex items-center justify-center'>
+   597→   597→                                                <LoaderIcon className="h-6 w-6 animate-spin" />
+   598→   598→                                            </span>
+   599→   599→                                        ) : (
+   600→   600→
+   601→   601→                                            <pre>
+   602→   602→                                                {outputData}
+   603→   603→                                            </pre>
+   604→   604→                                        )}
+   605→   605→                                    </div>
+   606→   606→                                </div>
+   607→   607→                            )}
+   608→   608→                    </AlertDialogHeader>
+   609→   609→                    {!executing && (
+   610→   610→                        <AlertDialogFooter>
+   611→   611→                            <AlertDialogCancel className='bg-primary hover:bg-primary/80 text-white w-full ' onClick={closeRunModel}>Close</AlertDialogCancel>
+   612→   612→                        </AlertDialogFooter>
+   613→   613→                    )}
+   614→   614→                </AlertDialogContent>
+   615→   615→            </AlertDialog>
+   616→   616→
+   617→   617→            <AlertDialog open={RunTestModel}>
+   618→   618→                <AlertDialogContent aria-describedby={undefined}>
+   619→   619→                    <AlertDialogHeader>
+   620→   620→                        <div className='flex flex-grow flex-col justify-around items-center w-full py-2 gap-2'>
+   621→   621→                            <div className='w-full h-1/3 flex flex-row flex-grow justify-center items-center p-2 border border-gray-200 rounded-md'>
+   622→   622→                                <div className='w-1/2 flex justify-center items-center'>
+   623→   623→                                    Test Case 1
+   624→   624→                                </div>
+   625→   625→
+   626→   626→                                <div className='w-1/2 flex justify-center items-center'>
+   627→   627→                                    {testcase1Status === "" ? (
+   628→   628→                                        <LoaderIcon className="h-6 w-6 animate-spin" />
+   629→   629→                                    ) : testcase1Status === "pass" ? (
+   630→   630→                                        <>
+   631→   631→                                            <Check className='h-6 w-6 mr-2 bg-green-400 rounded-full' /> Passed
+   632→   632→                                        </>
+   633→   633→                                    ) : (
+   634→   634→                                        <>
+   635→   635→                                            <X className='h-6 w-6 mr-2 bg-red-500 rounded-full' /> Failed
+   636→   636→                                        </>
+   637→   637→                                    )
+   638→   638→                                    }
+   639→   639→                                </div>
+   640→   640→                            </div>
+   641→   641→                            <div className='w-full h-1/3 flex flex-row flex-grow justify-center items-center p-2 border border-gray-200 rounded-md'>
+   642→   642→                                <div className='w-1/2 flex justify-center items-center'>
+   643→   643→                                    Test Case 2
+   644→   644→                                </div>
+   645→   645→
+   646→   646→                                <div className='w-1/2 flex justify-center items-center'>
+   647→   647→                                    {testcase2Status === "" ? (
+   648→   648→                                        <LoaderIcon className="h-6 w-6 animate-spin" />
+   649→   649→                                    ) : testcase2Status === "pass" ? (
+   650→   650→                                        <>
+   651→   651→                                            <Check className='h-6 w-6 mr-2 bg-green-400 rounded-full' /> Passed
+   652→   652→                                        </>
+   653→   653→                                    ) : (
+   654→   654→                                        <>
+   655→   655→                                            <X className='h-6 w-6 mr-2 bg-red-500 rounded-full' /> Failed
+   656→   656→                                        </>
+   657→   657→                                    )
+   658→   658→                                    }
+   659→   659→                                </div>
+   660→   660→                            </div>
+   661→   661→                            <div className='w-full h-1/3 flex flex-row flex-grow justify-center items-center p-2 border border-gray-200 rounded-md'>
+   662→   662→                                <div className='w-1/2 flex justify-center items-center'>
+   663→   663→                                    Test Case 3
+   664→   664→                                </div>
+   665→   665→                                <div className='w-1/2 flex justify-center items-center'>
+   666→   666→                                    {testcase3Status === "" ? (
+   667→   667→                                        <LoaderIcon className="h-6 w-6 animate-spin" />
+   668→   668→                                    ) : testcase3Status === "pass" ? (
+   669→   669→                                        <>
+   670→   670→                                            <Check className='h-6 w-6 mr-2 bg-green-400 rounded-full' /> Passed
+   671→   671→                                        </>
+   672→   672→                                    ) : (
+   673→   673→                                        <>
+   674→   674→                                            <X className='h-6 w-6 mr-2 bg-red-500 rounded-full' /> Failed
+   675→   675→                                        </>
+   676→   676→                                    )
+   677→   677→                                    }
+   678→   678→                                </div>
+   679→   679→                            </div>
+   680→   680→                        </div>
+   681→   681→                    </AlertDialogHeader>
+   682→   682→                    {!executingTestcases && (
+   683→   683→                        <AlertDialogFooter>
+   684→   684→                            <AlertDialogCancel className='bg-primary hover:bg-primary/80 text-white w-full' onClick={closeTestCaseModel}>Close</AlertDialogCancel>
+   685→   685→                        </AlertDialogFooter>
+   686→   686→                    )}
+   687→   687→                </AlertDialogContent>
+   688→   688→            </AlertDialog>
+   689→   689→        </main>
+   690→   690→    );
+   691→   691→};
+   692→   692→
+   693→   693→export default CodeView;
