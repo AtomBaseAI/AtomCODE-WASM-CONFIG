@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
+import { Package } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { getAllQuestionGroups } from "@/data/question-groups"
@@ -30,7 +30,7 @@ export default async function QuestionGroupsPage() {
                 <div className="flex justify-center items-center gap-x-4">
                     <Button variant="outline" className="gap-2" asChild>
                         <Link href="/admin/questions">
-                            <ArrowLeft className="size-4" /> All Questions
+                            <Package className="size-4" /> All Questions
                         </Link>
                     </Button>
                     <GroupFormDialog mode="create" />

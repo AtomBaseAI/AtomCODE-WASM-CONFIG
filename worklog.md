@@ -965,3 +965,56 @@ Work Log:
 
 Stage Summary:
 - Both question-group pages now use the exact shared UI pattern of the rest of the admin app (TanStack data table + toolbar + pagination + standard page header + matching action buttons). No custom one-off table UIs remain.
+
+---
+
+Task ID: setup-1
+Agent: Z.ai Code (main)
+Task: Delete default scaffolding, clone https://github.com/AtomBaseAI/AtomCODE-WASM-CONFIG, move all files/folders to project root, generate essential .env, run the app.
+
+Work Log:
+- Killed the scaffold dev server; deleted all default scaffold files (src/, prisma/, public/, db/, examples/, tests/, download/, config files, .git, .env) while preserving node_modules.
+- Cloned AtomCODE-WASM-CONFIG (commit a7a4161) to /tmp/atomcode, then moved ALL contents (including .git, docs/, elcetron/, scripts/, tool-results/, worklog.md) to /home/z/my-project.
+- Generated .env with the 7 essential vars per docs/TEST-CREDENTIALS.md: DATABASE_URL="file:/home/z/my-project/db/custom.db", AUTH_SECRET (openssl rand -base64 32), NEXT_PUBLIC_LAMBDA_URL/MULTI_URL (empty), OPENAI_API_KEY (empty), OPENAI_MODEL=gpt-4o-mini, plus commented branding overrides.
+- bun install (+50 new packages: codemirror, openai, sqlite-wasm, ruby-wasm, bcrypt-ts, next-auth v5 beta, etc.); bunx prisma generate.
+- Verified shipped db/custom.db already seeded (Admin=2, Staff=2, User=3, Course=1, Assessments=1) — no seed run needed.
+- Started dev server via .zscripts/dev.sh (sanctioned platform path; plain nohup/setsid launches get reaped). First run was OOM-killed (next-server RSS 2.7GB vs 4GB box; kernel dmesg confirmed) after a headless fullscreen-violation loop caused rapid webpack recompiles; cleared .next/cache/webpack and restarted — stable since.
+
+Stage Summary:
+- App runs on port 3000: Next.js 16.1.3 (webpack), .env loaded, SQLite via Prisma.
+- Browser-verified: login/admin dashboard (1 course, 3 students, 2 staffs, 3 questions), student dashboard + course modules + MCQ start flow, staff dashboard (Full Stack Java card), register page, auth guards (unauthenticated → /login), role-area guards, mobile 390px layout.
+- WASM runtime assets serve OK: /workers/*.worker.js 200, /runtimes/pyodide/0.28.3/pyodide.js 200, /runtimes/ruby/3.4/ruby+stdlib.wasm 200 (30MB), /runtimes/java/tools.jar 200.
+- Known cosmetic dev-mode issue: first-time role login may show "Something went wrong" toast while webpack compiles the dashboard route (server-action redirect races the compile); session cookie is still set and the dashboard is reachable — subsequent logins redirect normally.
+- Login credentials (from docs/TEST-CREDENTIALS.md): admin@atom.com/Admin@Atom, staff@atom.com/Staff@Atom, student@atom.com/User@Atom; assessment access key 123456 (assessment itself is expired by seed dates — expected).
+
+---
+
+Task ID: ui-1
+Agent: Z.ai Code (main)
+Task: On /admin/questions-groups/[gid]/questions — remove the edit/delete icons next to the "All Questions" button (top right) and use the universal back button (like admin/courses/[cid]/modules).
+
+Work Log:
+- Edited src/app/admin/questions-groups/[gid]/questions/page.tsx: removed <GroupFormDialog mode="edit"> (pencil icon) and <GroupDeleteDialog> (trash icon) from the top-right controls, removed their imports, and replaced the bespoke "All Questions" outline link with the shared <BackBtn /> (src/components/backbtn.tsx, router.back() + ChevronLeft) placed next to "Create Question" / "Add Questions" — mirroring the modules page layout.
+- Group edit/delete functionality remains available in the groups listing table rows (src/components/question-group/groups-data-table.tsx), so nothing is lost.
+- bunx eslint on the file: clean (exit 0).
+
+Stage Summary:
+- Browser-verified as admin: page top-right now shows only Create Question, Add Questions, and the universal chevron back button; pencil/trash icons gone from the header (per-question row actions in the data table untouched).
+- Back button navigates correctly (router.back() → /admin/questions-groups) when arriving via the groups list.
+
+---
+
+Task ID: ui-2
+Agent: Z.ai Code (main)
+Task: On /admin/questions-groups — use the sidebar Package icon on the "All Questions" button; make question editing in tables use a popup model instead of page navigation.
+
+Work Log:
+- src/app/admin/questions-groups/page.tsx: replaced ArrowLeft with lucide Package icon (same as sidebar Questions nav) on the "All Questions" button.
+- Table editing: the groups table already used popup dialogs (GroupFormDialog/GroupDeleteDialog). The QUESTION edit (QEdit) navigated to /admin/questions/edit/[qid]; converted it to an in-place popup:
+  - New admin-guarded endpoint src/app/api/questions/[qid]/route.ts (GET single question mapped to QuestionUpdateSchema shape, includes group title).
+  - src/components/question/question-edit-form.tsx: added optional controlled mode (open / onOpenChange / trigger props) — backward compatible, uncontrolled usage unchanged.
+  - src/components/question/question-table/q-edit.tsx: pencil now fetches the question + groups (parallel fetch), opens the EditQuestionForm popup in place; spinner while loading; router.refresh() on close to sync table rows.
+- Note: table popup verification on /admin/questions initially appeared broken — diagnosed as failed page hydration caused by the sandbox's repeated OOM-killed dev server + Fast Refresh churn; on a clean load the popup works. The sandbox (4GB) has OOM-killed next-server several times (dmesg evidence); restart via .zscripts/dev.sh + clearing .next/cache/webpack each time.
+
+Stage Summary:
+- Browser-verified: Package icon renders on All Questions button; question pencil opens "Edit Question" popup directly (no navigation) on BOTH the group questions table and the All Questions table, with real fetched data; group edit/delete popups and the legacy /admin/questions/edit/[qid] page (uncontrolled mode) still work; ESLint clean on all 4 touched files.

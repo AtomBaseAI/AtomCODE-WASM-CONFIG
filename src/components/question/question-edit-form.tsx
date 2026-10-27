@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dialog"
 import { Pencil, Plus } from "lucide-react"
 import { useEffect, useState, useTransition } from "react"
+import type { ReactNode } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { LoaderIcon } from "lucide-react"
@@ -40,9 +41,21 @@ import { toast } from "sonner"
 interface EditQuestionFormProps {
     question: z.infer<typeof QuestionUpdateSchema>
     groups?: { id: string; title: string }[]
+    /** Custom trigger element (defaults to the pencil "Edit" button). */
+    trigger?: ReactNode
+    /** Controlled open state — when provided the dialog is fully
+     *  controlled and no internal trigger is rendered. */
+    open?: boolean
+    onOpenChange?: (open: boolean) => void
 }
 
-const EditQuestionForm = ({ question, groups = [] }: EditQuestionFormProps) => {
+const EditQuestionForm = ({
+    question,
+    groups = [],
+    trigger,
+    open: controlledOpen,
+    onOpenChange,
+}: EditQuestionFormProps) => {
 
     const form = useForm<z.infer<typeof QuestionUpdateSchema>>({
         resolver: zodResolver(QuestionUpdateSchema),
@@ -104,7 +117,16 @@ const EditQuestionForm = ({ question, groups = [] }: EditQuestionFormProps) => {
             questionGroupId: question.questionGroupId || 'none'
         });
     }, [question, reset]);
-    const [open, setOpen] = useState(false)
+    const [internalOpen, setInternalOpen] = useState(false)
+    const isControlled = controlledOpen !== undefined
+    const open = isControlled ? controlledOpen : internalOpen
+    const setOpen = (next: boolean) => {
+        if (isControlled) {
+            onOpenChange?.(next)
+        } else {
+            setInternalOpen(next)
+        }
+    }
     const [isLoading, startTransition] = useTransition()
     const [error, setError] = useState<string | undefined>("")
     const [success, setSuccess] = useState<string | undefined>("")
@@ -138,11 +160,15 @@ const EditQuestionForm = ({ question, groups = [] }: EditQuestionFormProps) => {
     return (
         <>
             <Dialog open={open} onOpenChange={setOpen}>
-                <DialogTrigger asChild>
-                    <Button variant='outline' size='icon' className="border-primary bg-transparent hover:bg-purple-700/10 flex w-auto p-1 gap-1 text-primary justify-center items-center pr-3">
-                        <Pencil className="size-5 bg-transparent text-primary" /> Edit
-                    </Button>
-                </DialogTrigger>
+                {isControlled ? null : (
+                    <DialogTrigger asChild>
+                        {trigger ?? (
+                            <Button variant='outline' size='icon' className="border-primary bg-transparent hover:bg-purple-700/10 flex w-auto p-1 gap-1 text-primary justify-center items-center pr-3">
+                                <Pencil className="size-5 bg-transparent text-primary" /> Edit
+                            </Button>
+                        )}
+                    </DialogTrigger>
+                )}
                 <DialogContent aria-describedby={undefined} className="sm:max-w-[100vw] h-[100vh] overflow-y-auto overflow-x-hidden">
                     <DialogHeader>
                         <DialogTitle>Edit Question</DialogTitle>

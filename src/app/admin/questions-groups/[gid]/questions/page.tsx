@@ -7,10 +7,9 @@ import {
     getQuestionsAvailableForGroup,
 } from "@/data/question-groups"
 import { GroupQuestionsDataTable } from "@/components/question-group/group-questions-data-table"
-import { GroupFormDialog } from "@/components/question-group/group-form-dialog"
-import { GroupDeleteDialog } from "@/components/question-group/group-delete-dialog"
 import { AddQuestionsDialog } from "@/components/question-group/add-questions-dialog"
 import AddQuestion from "@/components/question/question-add-form"
+import BackBtn from "@/components/backbtn"
 
 const GroupQuestionsPage = async ({
     params,
@@ -84,25 +83,7 @@ const GroupQuestionsPage = async ({
                         groupTitle={group.title}
                         available={available}
                     />
-                    <Button variant="outline" className="gap-2" asChild>
-                        <Link href="/admin/questions">
-                            <ArrowLeft className="size-4" /> All Questions
-                        </Link>
-                    </Button>
-                    <GroupFormDialog
-                        mode="edit"
-                        group={{
-                            id: group.id,
-                            title: group.title,
-                            description: group.description,
-                        }}
-                    />
-                    <GroupDeleteDialog
-                        groupId={group.id}
-                        groupTitle={group.title}
-                        questionCount={inGroup.length}
-                        redirectTo="/admin/questions-groups"
-                    />
+                    <BackBtn />
                 </div>
             </div>
             <GroupQuestionsDataTable groupId={group.id} data={inGroup} />
