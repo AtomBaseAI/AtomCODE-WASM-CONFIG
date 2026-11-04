@@ -1,13 +1,18 @@
 
+import { db } from "@/lib/db"
 import BackBtn from "@/components/backbtn"
 import { RankAnimation } from "@/components/results/leaderboard/rank-animations"
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table"
 import { leaderboardData } from "@/data/results"
+import LeaderboardExportButton from "@/export/result-export/leaderboard-export-button"
 
 const CourseLeaderboard = async ({ params }: { params: Promise<{ cid: string}> }) => {
     const { cid } = await params
     // const courseid = parseInt(cid, 10)
-    const LeaderboardDatax = await leaderboardData(cid)
+    const [LeaderboardDatax, course] = await Promise.all([
+        leaderboardData(cid),
+        db.course.findUnique({ where: { id: cid }, select: { title: true } }),
+    ])
     if (!LeaderboardDatax || LeaderboardDatax.length === 0) {
         return (
             <>
@@ -28,6 +33,7 @@ const CourseLeaderboard = async ({ params }: { params: Promise<{ cid: string}> }
                         </p>
                     </div>
                     <div className="flex justify-center items-center gap-x-4">
+                        <LeaderboardExportButton data={LeaderboardDatax} courseName={course?.title} />
                         <BackBtn />
                     </div>
                 </div>

@@ -27,6 +27,12 @@ import {
 
 import { DataTablePagination } from "@/components/data-tables/data-table-pagination" 
 import { MQDataTableToolbar } from "@/components/module-questions/module-question-table/mq-data-table-toolbar"
+import { usePathname, useParams } from "next/navigation"
+import { makeSelectColumn } from "@/components/data-tables/select-column"
+import { BulkActionBar } from "@/components/data-tables/bulk-action-bar"
+import { BulkActionButton } from "@/components/data-tables/bulk-action-button"
+import { ExportSelectedCsvButton } from "@/components/data-tables/export-selected-csv"
+import { deletemodulequestionsbulk } from "@/actions/module"
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
@@ -45,9 +51,22 @@ export function MQuestionDataTable<TData, TValue>({
   )
   const [sorting, setSorting] = React.useState<SortingState>([])
 
+  const pathname = usePathname()
+  const isAdminArea = pathname?.startsWith("/admin") ?? false
+  const { mid } = useParams() as { mid: string }
+
+  const allColumns = React.useMemo(
+    () =>
+      [
+        makeSelectColumn<TData>() as ColumnDef<TData, TValue>,
+        ...columns,
+      ] as ColumnDef<TData, TValue>[],
+    [columns]
+  )
+
   const table = useReactTable({
     data,
-    columns,
+    columns: allColumns,
     state: {
       sorting,
       columnVisibility,
@@ -59,6 +78,7 @@ export function MQuestionDataTable<TData, TValue>({
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
+    getRowId: (row) => String((row as { id?: string }).id ?? ""),
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -110,7 +130,7 @@ export function MQuestionDataTable<TData, TValue>({
             ) : (
               <TableRow>
                 <TableCell
-                  colSpan={columns.length}
+                  colSpan={table.getVisibleLeafColumns().length}
                   className="h-24 text-center"
                 >
                   No results.
@@ -121,6 +141,29 @@ export function MQuestionDataTable<TData, TValue>({
         </Table>
       </div>
       <DataTablePagination table={table} />
+      <BulkActionBar table={table}>
+        {isAdminArea ? (
+          <BulkActionButton
+            table={table}
+            action={(ids) => deletemodulequestionsbulk(mid, ids)}
+            label="Remove from module"
+            dialogTitle="Remove selected questions from the module"
+            dialogDescription="The questions stay in the question bank; they are only detached from this module."
+          />
+        ) : (
+          <ExportSelectedCsvButton
+            table={table}
+            filename="module-questions"
+            columns={[
+              { key: "id", label: "ID" },
+              { key: "title", label: "Question" },
+              { key: "difficulty", label: "Difficulty" },
+              { key: "lang", label: "Language" },
+              { key: "maxscore", label: "Maximum Marks" },
+            ]}
+          />
+        )}
+      </BulkActionBar>
     </div>
   )
 }

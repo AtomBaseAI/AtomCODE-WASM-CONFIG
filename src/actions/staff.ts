@@ -6,6 +6,7 @@ import * as z from 'zod'
 import { revalidatePath } from "next/cache"
 import { AddStaffSchema, DeleteStaffSchema, StaffPasswordResetSchema, StaffUpdateSchema } from "@/schemas/staff-schema"
 import { genSaltSync, hashSync } from 'bcrypt-ts';
+import { requireAdmin } from "@/lib/action-guards";
 
 export const addstaff = async (values: z.infer<typeof AddStaffSchema>) => {
     const validatedFields = AddStaffSchema.safeParse(values)
@@ -91,6 +92,22 @@ export const resetpasswordstaff = async (
         }
     })
     return { success: "Default Password Updated !" }
+}
+
+export const deletestaffsbulk = async (ids: string[]) => {
+    const session = await requireAdmin();
+    if (!session) return { error: "Only admins can delete staff members." };
+
+    const validIds = (ids ?? []).filter(
+        (id) => typeof id === "string" && id.trim().length > 0
+    );
+    if (validIds.length === 0) return { error: "No staff members selected." };
+
+    const result = await db.staff.deleteMany({
+        where: { id: { in: validIds } },
+    });
+    revalidatePath("/admin/staffs");
+    return { success: `${result.count} staff member(s) deleted.` };
 }
 
 

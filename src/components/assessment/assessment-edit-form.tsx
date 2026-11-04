@@ -1,4 +1,5 @@
 "use client"
+import type { ReactNode } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -32,7 +33,15 @@ type AssessmentData = {
     active: boolean
 }
 
-const EditAssessment = ({ data }: { data: AssessmentData }) => {
+interface EditAssessmentProps {
+    data: AssessmentData
+    /** Custom trigger element (defaults to the "Edit Assessment" button). */
+    trigger?: ReactNode
+    /** Called after a successful update (e.g. to refresh table data). */
+    onSuccess?: () => void
+}
+
+const EditAssessment = ({ data, trigger, onSuccess }: EditAssessmentProps) => {
     const [open, setOpen] = useState(false)
     const [error, setError] = useState<string | undefined>("")
     const [success, setSuccess] = useState<string | undefined>("")
@@ -55,6 +64,7 @@ const EditAssessment = ({ data }: { data: AssessmentData }) => {
                         // form.reset()
                         setOpen(false)
                         toast.success(res.success)
+                        onSuccess?.()
                     }
                 })
                 .catch(() => toast.error("Something went wrong!"))
@@ -68,10 +78,12 @@ const EditAssessment = ({ data }: { data: AssessmentData }) => {
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button variant="outline" className="bg-green-500 text-white hover:bg-green-700 hover:text-white">
-                    <Pencil className="mr-2" />
-                    Edit Assessment
-                </Button>
+                {trigger ?? (
+                    <Button variant="outline" className="bg-green-500 text-white hover:bg-green-700 hover:text-white">
+                        <Pencil className="mr-2" />
+                        Edit Assessment
+                    </Button>
+                )}
             </DialogTrigger>
             <DialogContent aria-describedby={undefined} className="sm:max-w-[500px] max-h-[calc(100vh-2rem)] overflow-y-auto">
                 <DialogHeader>

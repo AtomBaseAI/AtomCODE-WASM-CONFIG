@@ -27,6 +27,11 @@ import {
 
 import { DataTablePagination } from "@/components/data-tables/data-table-pagination" 
 import { AQDataTableToolbar } from "./aq-data-table-toolbar"
+import { useParams } from "next/navigation"
+import { makeSelectColumn } from "@/components/data-tables/select-column"
+import { BulkActionBar } from "@/components/data-tables/bulk-action-bar"
+import { BulkActionButton } from "@/components/data-tables/bulk-action-button"
+import { deleteassessmentquestionsbulk } from "@/actions/assessment"
 
 
 interface DataTableProps<TData, TValue> {
@@ -46,9 +51,20 @@ export function AQuestionDataTable<TData, TValue>({
   )
   const [sorting, setSorting] = React.useState<SortingState>([])
 
+  const { aid } = useParams() as { aid: string }
+
+  const allColumns = React.useMemo(
+    () =>
+      [
+        makeSelectColumn<TData>() as ColumnDef<TData, TValue>,
+        ...columns,
+      ] as ColumnDef<TData, TValue>[],
+    [columns]
+  )
+
   const table = useReactTable({
     data,
-    columns,
+    columns: allColumns,
     state: {
       sorting,
       columnVisibility,
@@ -60,6 +76,7 @@ export function AQuestionDataTable<TData, TValue>({
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
+    getRowId: (row) => String((row as { id?: string }).id ?? ""),
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -111,7 +128,7 @@ export function AQuestionDataTable<TData, TValue>({
             ) : (
               <TableRow>
                 <TableCell
-                  colSpan={columns.length}
+                  colSpan={table.getVisibleLeafColumns().length}
                   className="h-24 text-center"
                 >
                   No results.
@@ -122,6 +139,15 @@ export function AQuestionDataTable<TData, TValue>({
         </Table>
       </div>
       <DataTablePagination table={table} />
+      <BulkActionBar table={table}>
+        <BulkActionButton
+          table={table}
+          action={(ids) => deleteassessmentquestionsbulk(aid, ids)}
+          label="Remove from assessment"
+          dialogTitle="Remove selected questions from the assessment"
+          dialogDescription="The questions stay in the question bank; they are only detached from this assessment."
+        />
+      </BulkActionBar>
     </div>
   )
 }

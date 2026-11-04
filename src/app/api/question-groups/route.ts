@@ -80,3 +80,36 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ group }, { status: 201 });
 }
+
+/**
+ * DELETE /api/question-groups — bulk-delete question groups.
+ * Body: { ids: string[] }. Questions inside the deleted groups are kept,
+ * they simply become ungrouped (onDelete: SetNull).
+ */
+export async function DELETE(req: Request) {
+    const guard = await requireAdminApi();
+    if (!guard.ok) return guard.response;
+
+    const body = await req.json().catch(() => null);
+    const rawIds = (body as { ids?: unknown } | null)?.ids;
+    const ids = Array.isArray(rawIds)
+        ? rawIds.filter(
+              (v): v is string => typeof v === "string" && v.trim().length > 0
+          )
+        : [];
+    if (ids.length === 0) {
+        return NextResponse.json(
+            { error: "No question groups selected." },
+            { status: 400 }
+        );
+    }
+
+    const result = await db.questionGroup.deleteMany({
+        where: { id: { in: ids } },
+    });
+
+    return NextResponse.json({
+        success: `${result.count} question group(s) deleted.`,
+        count: result.count,
+    });
+}

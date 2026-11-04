@@ -35,6 +35,9 @@ import { DataTableColumnHeader } from "@/components/data-tables/data-table-colum
 import { DataTablePagination } from "@/components/data-tables/data-table-pagination"
 import { DataTableViewOptions } from "@/components/data-tables/data-table-view-options"
 import { DataTableFacetedFilter } from "@/components/data-tables/data-table-faceted-filter"
+import { makeSelectColumn } from "@/components/data-tables/select-column"
+import { BulkActionBar } from "@/components/data-tables/bulk-action-bar"
+import { BulkActionButton } from "@/components/data-tables/bulk-action-button"
 import { difficulties, languages } from "@/components/question/question-table/q-config-data"
 import QEdit from "@/components/question/question-table/q-edit"
 import type { GroupQuestionRow } from "@/schemas/question-group-schema"
@@ -242,23 +245,33 @@ export function GroupQuestionsDataTable({
         React.useState<VisibilityState>({})
     const [columnFilters, setColumnFilters] =
         React.useState<ColumnFiltersState>([])
+    const [rowSelection, setRowSelection] = React.useState({})
 
     const columns = React.useMemo(
         () => getGroupQuestionColumns(groupId),
         [groupId]
     )
 
+    const allColumns = React.useMemo<ColumnDef<GroupQuestionRow>[]>(
+        () => [makeSelectColumn<GroupQuestionRow>(), ...columns],
+        [columns]
+    )
+
     const table = useReactTable({
         data,
-        columns,
+        columns: allColumns,
         state: {
             sorting,
             columnVisibility,
             columnFilters,
+            rowSelection,
         },
+        enableRowSelection: true,
+        onRowSelectionChange: setRowSelection,
         onSortingChange: setSorting,
         onColumnFiltersChange: setColumnFilters,
         onColumnVisibilityChange: setColumnVisibility,
+        getRowId: (row) => String((row as { id?: string }).id ?? ""),
         getCoreRowModel: getCoreRowModel(),
         getFilteredRowModel: getFilteredRowModel(),
         getPaginationRowModel: getPaginationRowModel(),
@@ -340,7 +353,12 @@ export function GroupQuestionsDataTable({
                     <TableBody>
                         {table.getRowModel().rows?.length ? (
                             table.getRowModel().rows.map((row) => (
-                                <TableRow key={row.id}>
+                                <TableRow
+                                    key={row.id}
+                                    data-state={
+                                        row.getIsSelected() && "selected"
+                                    }
+                                >
                                     {row.getVisibleCells().map((cell) => (
                                         <TableCell key={cell.id}>
                                             {flexRender(
@@ -354,7 +372,7 @@ export function GroupQuestionsDataTable({
                         ) : (
                             <TableRow>
                                 <TableCell
-                                    colSpan={columns.length}
+                                    colSpan={table.getVisibleLeafColumns().length}
                                     className="h-24 text-center"
                                 >
                                     No results.
@@ -365,6 +383,36 @@ export function GroupQuestionsDataTable({
                 </Table>
             </div>
             <DataTablePagination table={table} />
+            <BulkActionBar table={table}>
+                <BulkActionButton
+                    table={table}
+                    action={async (ids) => {
+                        const res = await fetch(
+                            `/api/question-groups/${groupId}/questions`,
+                            {
+                                method: "DELETE",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ questionIds: ids }),
+                            }
+                        )
+                        const data = await res.json().catch(() => ({}))
+                        if (!res.ok)
+                            return {
+                                error:
+                                    (data as { error?: string }).error ??
+                                    "Failed to remove questions from the group.",
+                            }
+                        return {
+                            success:
+                                (data as { success?: string }).success ??
+                                "Question(s) removed from the group.",
+                        }
+                    }}
+                    label="Remove from group"
+                    dialogTitle="Remove selected questions from the group"
+                    dialogDescription="The questions stay in the question bank; they are only detached from this group."
+                />
+            </BulkActionBar>
         </div>
     )
 }

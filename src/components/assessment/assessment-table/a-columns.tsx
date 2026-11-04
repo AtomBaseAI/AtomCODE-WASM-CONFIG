@@ -184,7 +184,7 @@ export const columns: ColumnDef<AssessmentTableType>[] = [
           <span className="flex gap-2">
             <ACODEView adata={adata} />
             <AMCQView adata={adata} />
-            <AEdit adata={adata} />
+            <AEdit assessment={row.original} />
             {qn <= 0 && mcqn <= 0 && <DeleteAssessment aid={aid} />}
           </span>
         </div>

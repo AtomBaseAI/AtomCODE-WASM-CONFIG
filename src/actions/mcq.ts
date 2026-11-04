@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import * as z from "zod";
 import { revalidatePath } from "next/cache";
 import { AddMCQSchema, BulkImportMCQSchema, DeleteMCQSchema, MCQUpdateSchema } from "@/schemas/mcq-schema";
+import { requireAdmin } from "@/lib/action-guards";
 
 export const addMCQ = async (
     values: z.infer<typeof AddMCQSchema>,
@@ -191,3 +192,36 @@ export const importmcqs = async (csvData: string, mid: string, aid: string, mcqt
         return { error: "Failed to import MCQs due to a database error" };
     }
 };
+
+export const deletemcqbulk = async (ids: string[]) => {
+    const session = await requireAdmin();
+    if (!session) return { error: "Only admins can delete MCQ questions." };
+
+    const validIds = (ids ?? []).filter(
+        (id) => typeof id === "string" && id.trim().length > 0
+    );
+    if (validIds.length === 0) return { error: "No MCQ questions selected." };
+
+    // MCQs referenced by student attempts cannot be deleted (FK restrict)
+    // — delete what we can and report the rest as skipped.
+    let deleted = 0;
+    let skipped = 0;
+    for (const id of validIds) {
+        try {
+            await db.mCQQuestion.delete({ where: { id } });
+            deleted++;
+        } catch {
+            skipped++;
+        }
+    }
+
+    await revalidatePath("/admin/courses");
+
+    if (deleted === 0) {
+        return {
+            error:
+                "None of the selected MCQs could be deleted — they are referenced by student attempts.",
+        };
+    }
+    return { success: `${deleted} MCQ(s) deleted.`, skipped: skipped > 0 ? skipped : undefined };
+}

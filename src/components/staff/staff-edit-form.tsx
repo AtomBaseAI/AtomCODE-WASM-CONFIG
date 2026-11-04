@@ -1,4 +1,5 @@
 "use client"
+import type { ReactNode } from "react"
 import {
     Dialog,
     DialogContent,
@@ -7,7 +8,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog"
 import { Pencil, Plus } from "lucide-react"
-import { useState, useTransition } from "react"
+import { useEffect, useState, useTransition } from "react"
 
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button"
@@ -38,16 +39,24 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { StaffUpdateSchema } from "@/schemas/staff-schema";
 import { updatestaff } from "@/actions/staff";
-const EditStaffForm = ({ staff }: { staff: z.infer<typeof StaffUpdateSchema> }) => {
+interface EditStaffFormProps {
+    staff: z.infer<typeof StaffUpdateSchema>
+    /** Custom trigger element (defaults to the "Edit" button). */
+    trigger?: ReactNode
+    /** Called after a successful update (e.g. to refresh table data). */
+    onSuccess?: () => void
+}
+
+const EditStaffForm = ({ staff, trigger, onSuccess }: EditStaffFormProps) => {
     const router = useRouter();
     const form = useForm<z.infer<typeof StaffUpdateSchema>>({
         resolver: zodResolver(StaffUpdateSchema),
         defaultValues: {
             id: staff.id,
-            staffnumber: staff.staffnumber || undefined,
+            staffnumber: staff.staffnumber ?? "",
             email: staff.email,
             name: staff.name,
-            phone: staff.phone || undefined,
+            phone: staff.phone ?? "",
             department: staff.department || undefined,
         }
     })
@@ -55,6 +64,17 @@ const EditStaffForm = ({ staff }: { staff: z.infer<typeof StaffUpdateSchema> }) 
     const [isLoading, startTransition] = useTransition()
     const [error, setError] = useState<string | undefined>("")
     const [success, setSuccess] = useState<string | undefined>("")
+    // Keep the form in sync when the row data changes (e.g. after a table refresh)
+    useEffect(() => {
+        form.reset({
+            id: staff.id,
+            staffnumber: staff.staffnumber ?? "",
+            email: staff.email,
+            name: staff.name,
+            phone: staff.phone ?? "",
+            department: staff.department || undefined,
+        })
+    }, [staff, form])
     const handleSubmit = (values: z.infer<typeof StaffUpdateSchema>) => {
         setError("")
         setSuccess("")
@@ -67,6 +87,7 @@ const EditStaffForm = ({ staff }: { staff: z.infer<typeof StaffUpdateSchema> }) 
                         form.reset()
                         setOpen(false)
                         toast.success(data.success);
+                        onSuccess?.();
                     }
                 })
                 .catch(() => toast.error("Something went wrong!"));
@@ -76,13 +97,15 @@ const EditStaffForm = ({ staff }: { staff: z.infer<typeof StaffUpdateSchema> }) 
         <>
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogTrigger asChild>
-                    <Button variant='outline' size='icon' className="border-primary bg-transparent hover:bg-purple-700/10 flex w-auto p-1 gap-1 text-primary justify-center items-center pr-3">
-                        <Pencil className="size-5 bg-transparent text-primary" /> Edit
-                    </Button>
+                    {trigger ?? (
+                        <Button variant='outline' size='icon' className="border-primary bg-transparent hover:bg-purple-700/10 flex w-auto p-1 gap-1 text-primary justify-center items-center pr-3">
+                            <Pencil className="size-5 bg-transparent text-primary" /> Edit
+                        </Button>
+                    )}
                 </DialogTrigger>
                 <DialogContent aria-describedby={undefined} className="sm:max-w-[825px] max-h-[calc(100vh-2rem)] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle>Edit Student</DialogTitle>
+                        <DialogTitle>Edit Staff</DialogTitle>
                     </DialogHeader>
 
                     <div className="grid gap-6">

@@ -32,6 +32,9 @@ import {
 import { DataTableColumnHeader } from "@/components/data-tables/data-table-column-header"
 import { DataTablePagination } from "@/components/data-tables/data-table-pagination"
 import { DataTableViewOptions } from "@/components/data-tables/data-table-view-options"
+import { makeSelectColumn } from "@/components/data-tables/select-column"
+import { BulkActionBar } from "@/components/data-tables/bulk-action-bar"
+import { BulkActionButton } from "@/components/data-tables/bulk-action-button"
 import { GroupFormDialog } from "@/components/question-group/group-form-dialog"
 import { GroupDeleteDialog } from "@/components/question-group/group-delete-dialog"
 import type { QuestionGroupRow } from "@/schemas/question-group-schema"
@@ -166,18 +169,28 @@ export function GroupsDataTable({ data }: GroupsDataTableProps) {
         React.useState<VisibilityState>({})
     const [columnFilters, setColumnFilters] =
         React.useState<ColumnFiltersState>([])
+    const [rowSelection, setRowSelection] = React.useState({})
+
+    const allColumns = React.useMemo<ColumnDef<QuestionGroupRow>[]>(
+        () => [makeSelectColumn<QuestionGroupRow>(), ...groupColumns],
+        []
+    )
 
     const table = useReactTable({
         data,
-        columns: groupColumns,
+        columns: allColumns,
         state: {
             sorting,
             columnVisibility,
             columnFilters,
+            rowSelection,
         },
+        enableRowSelection: true,
+        onRowSelectionChange: setRowSelection,
         onSortingChange: setSorting,
         onColumnFiltersChange: setColumnFilters,
         onColumnVisibilityChange: setColumnVisibility,
+        getRowId: (row) => String((row as { id?: string }).id ?? ""),
         getCoreRowModel: getCoreRowModel(),
         getFilteredRowModel: getFilteredRowModel(),
         getPaginationRowModel: getPaginationRowModel(),
@@ -243,7 +256,12 @@ export function GroupsDataTable({ data }: GroupsDataTableProps) {
                     <TableBody>
                         {table.getRowModel().rows?.length ? (
                             table.getRowModel().rows.map((row) => (
-                                <TableRow key={row.id}>
+                                <TableRow
+                                    key={row.id}
+                                    data-state={
+                                        row.getIsSelected() && "selected"
+                                    }
+                                >
                                     {row.getVisibleCells().map((cell) => (
                                         <TableCell key={cell.id}>
                                             {flexRender(
@@ -257,7 +275,7 @@ export function GroupsDataTable({ data }: GroupsDataTableProps) {
                         ) : (
                             <TableRow>
                                 <TableCell
-                                    colSpan={groupColumns.length}
+                                    colSpan={table.getVisibleLeafColumns().length}
                                     className="h-24 text-center"
                                 >
                                     No results.
@@ -268,6 +286,34 @@ export function GroupsDataTable({ data }: GroupsDataTableProps) {
                 </Table>
             </div>
             <DataTablePagination table={table} />
+            <BulkActionBar table={table}>
+                <BulkActionButton
+                    table={table}
+                    action={async (ids) => {
+                        const res = await fetch("/api/question-groups", {
+                            method: "DELETE",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ ids }),
+                        })
+                        const data = await res.json().catch(() => ({}))
+                        if (!res.ok)
+                            return {
+                                error:
+                                    (data as { error?: string }).error ??
+                                    "Failed to delete question groups.",
+                            }
+                        return {
+                            success:
+                                (data as { success?: string }).success ??
+                                "Question group(s) deleted.",
+                        }
+                    }}
+                    label="Delete"
+                    dialogTitle="Delete selected question groups"
+                    dialogDescription="Groups are removed; the questions inside them are kept and become ungrouped. This action cannot be undone."
+                    requirePhrase
+                />
+            </BulkActionBar>
         </div>
     )
 }

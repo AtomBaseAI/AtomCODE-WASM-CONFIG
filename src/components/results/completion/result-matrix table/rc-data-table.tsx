@@ -26,6 +26,9 @@ import {
 } from "@/components/ui/table"
 
 import { DataTablePagination } from "@/components/data-tables/data-table-pagination"
+import { makeSelectColumn } from "@/components/data-tables/select-column"
+import { BulkActionBar } from "@/components/data-tables/bulk-action-bar"
+import { ExportSelectedCsvButton } from "@/components/data-tables/export-selected-csv"
 import { RCDataTableToolbar } from "./rc-data-table-toolbar"
 
 interface DataTableProps<TData, TValue> {
@@ -45,9 +48,18 @@ export function ResultMatrixTable<TData, TValue>({
   )
   const [sorting, setSorting] = React.useState<SortingState>([])
 
+  const allColumns = React.useMemo(
+    () =>
+      [
+        makeSelectColumn<TData>() as ColumnDef<TData, TValue>,
+        ...columns,
+      ] as ColumnDef<TData, TValue>[],
+    [columns]
+  )
+
   const table = useReactTable({
     data,
-    columns,
+    columns: allColumns,
     state: {
       sorting,
       columnVisibility,
@@ -59,6 +71,7 @@ export function ResultMatrixTable<TData, TValue>({
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
+    getRowId: (row) => String((row as { rollnumber?: string }).rollnumber ?? ""),
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -110,7 +123,7 @@ export function ResultMatrixTable<TData, TValue>({
             ) : (
               <TableRow>
                 <TableCell
-                  colSpan={columns.length}
+                  colSpan={table.getVisibleLeafColumns().length}
                   className="h-24 text-center"
                 >
                   No results.
@@ -121,6 +134,21 @@ export function ResultMatrixTable<TData, TValue>({
         </Table>
       </div>
       <DataTablePagination table={table} />
+      <BulkActionBar table={table}>
+        <ExportSelectedCsvButton
+          table={table}
+          filename="module-completion"
+          columns={[
+            { key: "rollnumber", label: "Rollnumber" },
+            { key: "studentname", label: "Name" },
+            { key: "batch", label: "Batch" },
+            { key: "department", label: "Department" },
+            { key: "section", label: "Section" },
+            { key: "email", label: "Email" },
+            { key: "completionpercentage", label: "Completion %" },
+          ]}
+        />
+      </BulkActionBar>
     </div>
   )
 }

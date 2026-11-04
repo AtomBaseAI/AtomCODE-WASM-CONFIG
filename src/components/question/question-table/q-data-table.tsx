@@ -27,6 +27,10 @@ import {
 
 import { DataTablePagination } from "@/components/data-tables/data-table-pagination" 
 import { QDataTableToolbar } from "@/components/question/question-table/q-data-table-toolbar"
+import { makeSelectColumn } from "@/components/data-tables/select-column"
+import { BulkActionBar } from "@/components/data-tables/bulk-action-bar"
+import { BulkActionButton } from "@/components/data-tables/bulk-action-button"
+import { deletequestionsbulk } from "@/actions/question"
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
@@ -45,9 +49,18 @@ export function QuestionDataTable<TData, TValue>({
   )
   const [sorting, setSorting] = React.useState<SortingState>([])
 
+  const allColumns = React.useMemo(
+    () =>
+      [
+        makeSelectColumn<TData>() as ColumnDef<TData, TValue>,
+        ...columns,
+      ] as ColumnDef<TData, TValue>[],
+    [columns]
+  )
+
   const table = useReactTable({
     data,
-    columns,
+    columns: allColumns,
     state: {
       sorting,
       columnVisibility,
@@ -59,6 +72,7 @@ export function QuestionDataTable<TData, TValue>({
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
+    getRowId: (row) => String((row as { id?: string }).id ?? ""),
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -110,7 +124,7 @@ export function QuestionDataTable<TData, TValue>({
             ) : (
               <TableRow>
                 <TableCell
-                  colSpan={columns.length}
+                  colSpan={table.getVisibleLeafColumns().length}
                   className="h-24 text-center"
                 >
                   No results.
@@ -121,6 +135,16 @@ export function QuestionDataTable<TData, TValue>({
         </Table>
       </div>
       <DataTablePagination table={table} />
+      <BulkActionBar table={table}>
+        <BulkActionButton
+          table={table}
+          action={deletequestionsbulk}
+          label="Delete"
+          dialogTitle="Delete selected questions"
+          dialogDescription="This permanently removes the selected questions from the question bank and detaches them from modules/assessments. This action cannot be undone."
+          requirePhrase
+        />
+      </BulkActionBar>
     </div>
   )
 }

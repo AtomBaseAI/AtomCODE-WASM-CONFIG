@@ -1,22 +1,31 @@
 // AtomCode — unified schema (Admin + Staff + Student)
-// Ported from AtomCode-Repatch (PostgreSQL) to SQLite.
-// Optimizations vs. original: dropped unused SuperAdmin & malformed Account
-// models (credentials + JWT auth only), added safe defaults, no @db.Text.
+// PostgreSQL (Neon) edition — migrated from the SQLite build.
 //
-// Naming note: CodeQuestion is the coding-question entity (source code, sample
-// inputs, hidden test cases, blacklist/whitelist). MCQQuestion stays separate.
-// QuestionGroup is a lightweight question-bank folder: questions may live in
-// at most one group; deleting a group keeps its questions (they become
-// ungrouped via onDelete: SetNull).
-// @@map keeps the original physical table names so the existing SQLite data
-// and foreign keys remain untouched.
+// PostgreSQL optimizations applied on top of the original unified schema:
+// 1. datasource provider = "postgresql" (Neon pooler endpoint, sslmode=require).
+// 2. Long-form content columns are explicit `@db.Text` (descriptions, source
+//    code, judge I/O vectors, user submissions, snippets). Postgres `text`
+//    has no length overhead and no silent truncation — ideal for judge data.
+// 3. Added the FK indexes Postgres does NOT create automatically:
+//    UserCodeQuestionData.questionId and userAssessmentCodeData.questionId
+//    (hot paths: cascading deletes and per-question result joins).
+// 4. Composite uniques (@@unique([userId, questionId])) double as the
+//    userId-prefix lookup index for retake/upsert paths — no duplicate index.
+// 5. status/difficulty/lang columns intentionally stay String (not native
+//    enums): the UI writes a controlled set of values, but retake / CSV
+//    import flows must never hard-fail on a new value. Prisma String maps
+//    to Postgres text, which is already the optimal storage.
+// 6. No @@map aliases needed — fresh Postgres database, no legacy SQLite
+//    table names to preserve.
+// 7. Dropped the unused SuperAdmin & malformed Account models (credentials
+//    + JWT auth only — no OAuth, so no Account/Session tables required).
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -151,29 +160,29 @@ model UserModuleData {
 model CodeQuestion {
   id                     String                   @id @default(uuid())
   title                  String
-  description            String
+  description            String                   @db.Text
   moduleId               String?
   module                 Module?                  @relation(fields: [moduleId], references: [id])
-  sampleinput1           String
-  sampleinput2           String
-  sampleoutput1          String
-  sampleoutput2          String
-  input1                 String
-  input2                 String
-  input3                 String
-  output1                String
-  output2                String
-  output3                String
-  sourcecode             String?
+  sampleinput1           String                   @db.Text
+  sampleinput2           String                   @db.Text
+  sampleoutput1          String                   @db.Text
+  sampleoutput2          String                   @db.Text
+  input1                 String                   @db.Text
+  input2                 String                   @db.Text
+  input3                 String                   @db.Text
+  output1                String                   @db.Text
+  output2                String                   @db.Text
+  output3                String                   @db.Text
+  sourcecode             String?                  @db.Text
   referenceimg           String?
   maxscore               Int
   difficulty             String
   lang                   String
   topic                  String?
   subtopic               String?
-  inputconstrains        String?
-  blacklist              String?
-  whitelist              String?
+  inputconstrains        String?                  @db.Text
+  blacklist              String?                  @db.Text
+  whitelist              String?                  @db.Text
   userCodeQuestionData   UserCodeQuestionData[]
   userAssessmentCodeData userAssessmentCodeData[]
   Assessments            Assessments?             @relation(fields: [assessmentsId], references: [id])
@@ -184,14 +193,12 @@ model CodeQuestion {
   @@index([moduleId])
   @@index([assessmentsId])
   @@index([questionGroupId])
-  // Physical table keeps its original name — no data migration needed.
-  @@map("Question")
 }
 
 model QuestionGroup {
   id          String         @id @default(uuid())
   title       String
-  description String?
+  description String?        @db.Text
   createdAt   DateTime       @default(now())
   questions   CodeQuestion[]
 
@@ -209,7 +216,7 @@ model UserCodeQuestionData {
   submissiontype  String
   tabswitches     Int
   status          String
-  usercode        String?
+  usercode        String?      @db.Text
   duration        String?
   testcase1status String?
   testcase2status String?
@@ -221,14 +228,13 @@ model UserCodeQuestionData {
   @@unique([userId, questionId])
   @@index([moduleId])
   @@index([userId, moduleId])
-  // Physical table keeps its original name — no data migration needed.
-  @@map("UserQuestionData")
+  @@index([questionId])
 }
 
 model MCQQuestion {
   id            String       @id @default(uuid())
   title         String
-  description   String
+  description   String       @db.Text
   topic         String?
   subtopic      String?
   Option1       String
@@ -238,7 +244,7 @@ model MCQQuestion {
   CorrectOption Int
   moduleId      String?
   referenceimg  String?
-  codesnippet   String?
+  codesnippet   String?      @db.Text
   iscodesnippet Boolean
   module        Module?      @relation(fields: [moduleId], references: [id])
   Assessments   Assessments? @relation(fields: [assessmentsId], references: [id])
@@ -337,7 +343,7 @@ model userAssessmentCodeData {
   errors          Int
   submissiontype  String
   status          String
-  usercode        String?
+  usercode        String?      @db.Text
   duration        String?
   testcase1status String?
   testcase2status String?
@@ -349,6 +355,7 @@ model userAssessmentCodeData {
   @@unique([userId, questionId])
   @@index([assessmentId])
   @@index([userId, assessmentId])
+  @@index([questionId])
 }
 
 model UserAssessmentData {

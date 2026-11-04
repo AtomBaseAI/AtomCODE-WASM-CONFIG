@@ -158,7 +158,7 @@ export const columns: ColumnDef<ModuleTableType>[] = [
             <MCODEView mdata={mdata} />
             <MMCQView mdata={mdata} />
             <MReferences mdata={mdata} />
-            <MEdit mdata={mdata} />
+            <MEdit module={row.original} />
             {qn <= 0 && mcqn <= 0 && <DeleteModule mid={mid} />}
           </span>
         </div>

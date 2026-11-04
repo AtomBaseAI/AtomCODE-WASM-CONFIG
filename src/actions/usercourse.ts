@@ -2,6 +2,7 @@
 import { db } from "@/lib/db"
 import * as z from 'zod'
 import { revalidatePath } from "next/cache"
+import { requireAdminOrCourseStaff } from "@/lib/action-guards"
 export const addcoursestudents = async (
     courseId: string,
     studentIds: string[]
@@ -70,3 +71,30 @@ export const getstudentsbycourseid = async (courseId: string) => {
         return null;
     }
 };
+
+/**
+ * Bulk-remove students from a course. Allowed for admins and for staff
+ * assigned to the course (matches the row-level permission model).
+ */
+export const deletecoursestudentsbulk = async (
+    uids: string[],
+    cid: string
+) => {
+    const session = await requireAdminOrCourseStaff(cid);
+    if (!session) {
+        return { error: "You are not allowed to manage students of this course." };
+    }
+
+    const validIds = (uids ?? []).filter(
+        (id) => typeof id === "string" && id.trim().length > 0
+    );
+    if (validIds.length === 0) return { error: "No students selected." };
+
+    const result = await db.userCourse.deleteMany({
+        where: { courseId: cid, userId: { in: validIds } },
+    });
+
+    revalidatePath("/admin/courses");
+    revalidatePath(`/staff/courses/${cid}/students`);
+    return { success: `${result.count} student(s) removed from the course.` };
+}

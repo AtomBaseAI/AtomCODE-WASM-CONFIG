@@ -41,6 +41,8 @@ export const StudentTableSchema = z.object({
     section: z.string().nullable(),
     batch: z.string().nullable(),
     github: z.string().nullable(),
+    phone: z.string().nullable().optional(),
+    linkedin: z.string().nullable().optional(),
     isActive: z.boolean(),
 })
 

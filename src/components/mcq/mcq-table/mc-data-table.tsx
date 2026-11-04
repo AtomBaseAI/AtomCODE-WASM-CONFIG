@@ -27,6 +27,12 @@ import {
 
 import { DataTablePagination } from "@/components/data-tables/data-table-pagination" 
 import { MCQDataTableToolbar } from "@/components/mcq/mcq-table/mc-data-table-toolbar"
+import { usePathname } from "next/navigation"
+import { makeSelectColumn } from "@/components/data-tables/select-column"
+import { BulkActionBar } from "@/components/data-tables/bulk-action-bar"
+import { BulkActionButton } from "@/components/data-tables/bulk-action-button"
+import { ExportSelectedCsvButton } from "@/components/data-tables/export-selected-csv"
+import { deletemcqbulk } from "@/actions/mcq"
 // import { QDataTableToolbar } from "@/components/question/question-table/q-data-table-toolbar"
 
 interface DataTableProps<TData, TValue> {
@@ -46,9 +52,21 @@ export function MCQDataTable<TData, TValue>({
   )
   const [sorting, setSorting] = React.useState<SortingState>([])
 
+  const pathname = usePathname()
+  const isAdminArea = pathname?.startsWith("/admin") ?? false
+
+  const allColumns = React.useMemo(
+    () =>
+      [
+        makeSelectColumn<TData>() as ColumnDef<TData, TValue>,
+        ...columns,
+      ] as ColumnDef<TData, TValue>[],
+    [columns]
+  )
+
   const table = useReactTable({
     data,
-    columns,
+    columns: allColumns,
     state: {
       sorting,
       columnVisibility,
@@ -60,6 +78,7 @@ export function MCQDataTable<TData, TValue>({
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
+    getRowId: (row) => String((row as { id?: string }).id ?? ""),
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -111,7 +130,7 @@ export function MCQDataTable<TData, TValue>({
             ) : (
               <TableRow>
                 <TableCell
-                  colSpan={columns.length}
+                  colSpan={table.getVisibleLeafColumns().length}
                   className="h-24 text-center"
                 >
                   No results.
@@ -122,6 +141,35 @@ export function MCQDataTable<TData, TValue>({
         </Table>
       </div>
       <DataTablePagination table={table} />
+      <BulkActionBar table={table}>
+        {isAdminArea ? (
+          <BulkActionButton
+            table={table}
+            action={deletemcqbulk}
+            label="Delete"
+            dialogTitle="Delete selected MCQ questions"
+            dialogDescription="MCQs referenced by student attempts cannot be deleted and will be skipped. This action cannot be undone."
+            requirePhrase
+          />
+        ) : (
+          <ExportSelectedCsvButton
+            table={table}
+            filename="mcq-questions"
+            columns={[
+              { key: "id", label: "ID" },
+              { key: "title", label: "Question" },
+              { key: "description", label: "Description" },
+              { key: "topic", label: "Topic" },
+              { key: "subtopic", label: "Subtopic" },
+              { key: "Option1", label: "Option 1" },
+              { key: "Option2", label: "Option 2" },
+              { key: "Option3", label: "Option 3" },
+              { key: "Option4", label: "Option 4" },
+              { key: "CorrectOption", label: "Correct Option" },
+            ]}
+          />
+        )}
+      </BulkActionBar>
     </div>
   )
 }

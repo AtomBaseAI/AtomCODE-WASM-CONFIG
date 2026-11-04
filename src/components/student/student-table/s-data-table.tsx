@@ -25,8 +25,12 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
-import { DataTablePagination } from "@/components/data-tables/data-table-pagination" 
-import { DataTableToolbar } from "@/components/student/student-table/s-data-table-toolbar" 
+import { DataTablePagination } from "@/components/data-tables/data-table-pagination"
+import { DataTableToolbar } from "@/components/student/student-table/s-data-table-toolbar"
+import { makeSelectColumn } from "@/components/data-tables/select-column"
+import { BulkActionBar } from "@/components/data-tables/bulk-action-bar"
+import { BulkActionButton } from "@/components/data-tables/bulk-action-button"
+import { deletestudentsbulk } from "@/actions/student"
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
@@ -45,9 +49,18 @@ export function StudentDataTable<TData, TValue>({
   )
   const [sorting, setSorting] = React.useState<SortingState>([])
 
+  const allColumns = React.useMemo(
+    () =>
+      [
+        makeSelectColumn<TData>() as ColumnDef<TData, TValue>,
+        ...columns,
+      ] as ColumnDef<TData, TValue>[],
+    [columns]
+  )
+
   const table = useReactTable({
     data,
-    columns,
+    columns: allColumns,
     state: {
       sorting,
       columnVisibility,
@@ -59,6 +72,7 @@ export function StudentDataTable<TData, TValue>({
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
+    getRowId: (row) => String((row as { id?: string }).id ?? ""),
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -110,7 +124,7 @@ export function StudentDataTable<TData, TValue>({
             ) : (
               <TableRow>
                 <TableCell
-                  colSpan={columns.length}
+                  colSpan={table.getVisibleLeafColumns().length}
                   className="h-24 text-center"
                 >
                   No results.
@@ -121,6 +135,16 @@ export function StudentDataTable<TData, TValue>({
         </Table>
       </div>
       <DataTablePagination table={table} />
+      <BulkActionBar table={table}>
+        <BulkActionButton
+          table={table}
+          action={deletestudentsbulk}
+          label="Delete"
+          dialogTitle="Delete selected students"
+          dialogDescription="This permanently removes the selected students along with their course enrollments and attempt data. This action cannot be undone."
+          requirePhrase
+        />
+      </BulkActionBar>
     </div>
   )
 }

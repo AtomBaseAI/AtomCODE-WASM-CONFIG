@@ -173,7 +173,7 @@ export const columns: ColumnDef<StudentTableType>[] = [
       return (
         <div className="flex items-center">
           <span className="flex gap-2">
-            <SEdit uid={id} />
+            <SEdit student={row.original} />
             <DeleteStudent uid={id} />
           </span>
         </div>

@@ -27,6 +27,12 @@ import {
 
 import { DataTablePagination } from "@/components/data-tables/data-table-pagination" 
 import { MDataTableToolbar } from "@/components/module/module-table/m-data-table-toolbar"
+import { usePathname } from "next/navigation"
+import { makeSelectColumn } from "@/components/data-tables/select-column"
+import { BulkActionBar } from "@/components/data-tables/bulk-action-bar"
+import { BulkActionButton } from "@/components/data-tables/bulk-action-button"
+import { ExportSelectedCsvButton } from "@/components/data-tables/export-selected-csv"
+import { deletemodulesbulk } from "@/actions/module"
 
 
 interface DataTableProps<TData, TValue> {
@@ -46,9 +52,21 @@ export function ModuleDataTable<TData, TValue>({
   )
   const [sorting, setSorting] = React.useState<SortingState>([])
 
+  const pathname = usePathname()
+  const isAdminArea = pathname?.startsWith("/admin") ?? false
+
+  const allColumns = React.useMemo(
+    () =>
+      [
+        makeSelectColumn<TData>() as ColumnDef<TData, TValue>,
+        ...columns,
+      ] as ColumnDef<TData, TValue>[],
+    [columns]
+  )
+
   const table = useReactTable({
     data,
-    columns,
+    columns: allColumns,
     state: {
       sorting,
       columnVisibility,
@@ -60,6 +78,7 @@ export function ModuleDataTable<TData, TValue>({
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
+    getRowId: (row) => String((row as { id?: string }).id ?? ""),
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -111,7 +130,7 @@ export function ModuleDataTable<TData, TValue>({
             ) : (
               <TableRow>
                 <TableCell
-                  colSpan={columns.length}
+                  colSpan={table.getVisibleLeafColumns().length}
                   className="h-24 text-center"
                 >
                   No results.
@@ -122,6 +141,32 @@ export function ModuleDataTable<TData, TValue>({
         </Table>
       </div>
       <DataTablePagination table={table} />
+      <BulkActionBar table={table}>
+        {isAdminArea ? (
+          <BulkActionButton
+            table={table}
+            action={deletemodulesbulk}
+            label="Delete"
+            dialogTitle="Delete selected modules"
+            dialogDescription="Modules still containing questions or student attempts cannot be deleted and will be skipped. This action cannot be undone."
+            requirePhrase
+          />
+        ) : (
+          <ExportSelectedCsvButton
+            table={table}
+            filename="modules"
+            columns={[
+              { key: "id", label: "ID" },
+              { key: "title", label: "Module" },
+              { key: "moduledate", label: "Date" },
+              { key: "modulestatus", label: "Status" },
+              { key: "maxscore", label: "Max Score" },
+              { key: "questionscount", label: "Questions" },
+              { key: "mcqcount", label: "MCQs" },
+            ]}
+          />
+        )}
+      </BulkActionBar>
     </div>
   )
 }

@@ -2,6 +2,7 @@
 import { db } from "@/lib/db"
 import * as z from 'zod'
 import { revalidatePath } from "next/cache"
+import { requireAdmin } from "@/lib/action-guards"
 export const addcoursestaffs = async (
     courseId: string,
     studentIds: string[]
@@ -69,3 +70,29 @@ export const getstaffsbycourseid = async (courseId: string) => {
         return null;
     }
 };
+
+/**
+ * Bulk-remove staff members from a course (admin only).
+ */
+export const deletecoursestaffsbulk = async (
+    sids: string[],
+    cid: string
+) => {
+    const session = await requireAdmin();
+    if (!session) {
+        return { error: "Only admins can manage course staff assignments." };
+    }
+
+    const validIds = (sids ?? []).filter(
+        (id) => typeof id === "string" && id.trim().length > 0
+    );
+    if (validIds.length === 0) return { error: "No staff members selected." };
+
+    const result = await db.staffCourse.deleteMany({
+        where: { courseId: cid, staffId: { in: validIds } },
+    });
+
+    revalidatePath("/admin/courses");
+    revalidatePath("/staff/courses");
+    return { success: `${result.count} staff member(s) removed from the course.` };
+}

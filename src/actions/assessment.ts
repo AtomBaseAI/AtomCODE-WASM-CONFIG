@@ -7,6 +7,7 @@ import {
   UpdateAssessmentSchema,
 } from "@/schemas/assessment-schema";
 import { revalidatePath } from "next/cache";
+import { requireAdmin } from "@/lib/action-guards";
 
 import * as z from 'zod';
 
@@ -252,6 +253,82 @@ export const deleteassessmentquestion = async (questionId: string, assessmentId:
 
   revalidatePath("/admin/courses")
   return { success: "Question removed from assessment successfully!" }
+}
+
+export const deleteassessmentsbulk = async (ids: string[]) => {
+  const session = await requireAdmin();
+  if (!session) return { error: "Only admins can delete assessments." };
+
+  const validIds = (ids ?? []).filter(
+    (id) => typeof id === "string" && id.trim().length > 0
+  );
+  if (validIds.length === 0) return { error: "No assessments selected." };
+
+  // Assessments referenced by student attempts cannot be deleted (FK
+  // restrict) — delete what we can and report the rest as skipped.
+  let deleted = 0;
+  let skipped = 0;
+  for (const id of validIds) {
+    try {
+      await db.assessments.delete({ where: { id } });
+      deleted++;
+    } catch {
+      skipped++;
+    }
+  }
+
+  revalidatePath("/admin/courses");
+  revalidatePath("/student/assessments");
+
+  if (deleted === 0) {
+    return {
+      error:
+        "None of the selected assessments could be deleted — they still contain questions or student attempts.",
+    };
+  }
+  return { success: `${deleted} assessment(s) deleted.`, skipped: skipped > 0 ? skipped : undefined };
+}
+
+/**
+ * Bulk-remove code questions from an assessment (the questions themselves
+ * stay in the question bank — mirrors the row-level disconnect behaviour).
+ */
+export const deleteassessmentquestionsbulk = async (
+  assessmentId: string,
+  questionIds: string[]
+) => {
+  const session = await requireAdmin();
+  if (!session) return { error: "Only admins can manage assessment questions." };
+
+  const validIds = (questionIds ?? []).filter(
+    (id) => typeof id === "string" && id.trim().length > 0
+  );
+  if (validIds.length === 0) return { error: "No questions selected." };
+
+  const assessment = await db.assessments.findUnique({
+    where: { id: assessmentId },
+    select: { codeQuestions: { select: { id: true } } },
+  });
+  if (!assessment) return { error: "Assessment not found." };
+
+  const connectedIds = assessment.codeQuestions
+    .map((q) => q.id)
+    .filter((id) => validIds.includes(id));
+  if (connectedIds.length === 0) {
+    return { error: "Selected questions are not part of this assessment." };
+  }
+
+  await db.assessments.update({
+    where: { id: assessmentId },
+    data: {
+      codeQuestions: {
+        disconnect: connectedIds.map((id) => ({ id })),
+      },
+    },
+  });
+
+  revalidatePath("/admin/courses");
+  return { success: `${connectedIds.length} question(s) removed from the assessment.` };
 }
 
 

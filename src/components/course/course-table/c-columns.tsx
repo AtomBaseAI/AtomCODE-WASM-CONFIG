@@ -129,7 +129,7 @@ export const columns: ColumnDef<CourseTableType>[] = [
             <CStudents cid={cid} />
             <CStaffs cid={cid} />
             <CFeedbacks cid={cid} />
-            <CEdit cid={cid} />
+            <CEdit course={row.original} />
             {modulecount <= 0 && <DeleteCourse cid={cid} />}
           </span>
         </div>

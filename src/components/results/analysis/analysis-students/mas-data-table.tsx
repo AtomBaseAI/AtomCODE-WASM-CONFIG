@@ -26,6 +26,9 @@ import {
 } from "@/components/ui/table"
 
 import { DataTablePagination } from "@/components/data-tables/data-table-pagination"
+import { makeSelectColumn } from "@/components/data-tables/select-column"
+import { BulkActionBar } from "@/components/data-tables/bulk-action-bar"
+import { ExportSelectedCsvButton } from "@/components/data-tables/export-selected-csv"
 import { MASDataTableToolbar } from "@/components/results/analysis/analysis-students/mas-data-table-toolbar"
 
 
@@ -46,9 +49,18 @@ export function ResultAnalysisStudentsDataTable<TData, TValue>({
   )
   const [sorting, setSorting] = React.useState<SortingState>([])
 
+  const allColumns = React.useMemo(
+    () =>
+      [
+        makeSelectColumn<TData>() as ColumnDef<TData, TValue>,
+        ...columns,
+      ] as ColumnDef<TData, TValue>[],
+    [columns]
+  )
+
   const table = useReactTable({
     data,
-    columns,
+    columns: allColumns,
     state: {
       sorting,
       columnVisibility,
@@ -60,6 +72,7 @@ export function ResultAnalysisStudentsDataTable<TData, TValue>({
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
+    getRowId: (row) => String((row as { userid?: string }).userid ?? ""),
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -111,7 +124,7 @@ export function ResultAnalysisStudentsDataTable<TData, TValue>({
             ) : (
               <TableRow>
                 <TableCell
-                  colSpan={columns.length}
+                  colSpan={table.getVisibleLeafColumns().length}
                   className="h-24 text-center"
                 >
                   No results.
@@ -122,6 +135,27 @@ export function ResultAnalysisStudentsDataTable<TData, TValue>({
         </Table>
       </div>
       <DataTablePagination table={table} />
+      <BulkActionBar table={table}>
+        <ExportSelectedCsvButton
+          table={table}
+          filename="student-analysis"
+          columns={[
+            { key: "name", label: "Name" },
+            { key: "rollnumber", label: "Rollnumber" },
+            { key: "batch", label: "Batch" },
+            { key: "department", label: "Department" },
+            { key: "section", label: "Section" },
+            { key: "status", label: "Status" },
+            { key: "mcqScore", label: "MCQ Score" },
+            { key: "maxmcqscore", label: "Max MCQ Score" },
+            { key: "codeScore", label: "Code Score" },
+            { key: "maxcodescore", label: "Max Code Score" },
+            { key: "totalScore", label: "Total Score" },
+            { key: "maxScore", label: "Max Score" },
+            { key: "time", label: "Time (s)" },
+          ]}
+        />
+      </BulkActionBar>
     </div>
   )
 }

@@ -27,6 +27,10 @@ import {
 
 import { DataTablePagination } from "@/components/data-tables/data-table-pagination"
 import { RDataTableToolbar } from "@/components/module-reference/module-reference-table/r-data-table-toolbar"
+import { makeSelectColumn } from "@/components/data-tables/select-column"
+import { BulkActionBar } from "@/components/data-tables/bulk-action-bar"
+import { BulkActionButton } from "@/components/data-tables/bulk-action-button"
+import { deletereferencesbulk } from "@/actions/references"
 
 
 interface DataTableProps<TData, TValue> {
@@ -46,9 +50,18 @@ export function ModuleReferenceDataTable<TData, TValue>({
   )
   const [sorting, setSorting] = React.useState<SortingState>([])
 
+  const allColumns = React.useMemo(
+    () =>
+      [
+        makeSelectColumn<TData>() as ColumnDef<TData, TValue>,
+        ...columns,
+      ] as ColumnDef<TData, TValue>[],
+    [columns]
+  )
+
   const table = useReactTable({
     data,
-    columns,
+    columns: allColumns,
     state: {
       sorting,
       columnVisibility,
@@ -60,6 +73,7 @@ export function ModuleReferenceDataTable<TData, TValue>({
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
+    getRowId: (row) => String((row as { id?: string }).id ?? ""),
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -111,7 +125,7 @@ export function ModuleReferenceDataTable<TData, TValue>({
             ) : (
               <TableRow>
                 <TableCell
-                  colSpan={columns.length}
+                  colSpan={table.getVisibleLeafColumns().length}
                   className="h-24 text-center"
                 >
                   No results.
@@ -122,6 +136,16 @@ export function ModuleReferenceDataTable<TData, TValue>({
         </Table>
       </div>
       <DataTablePagination table={table} />
+      <BulkActionBar table={table}>
+        <BulkActionButton
+          table={table}
+          action={deletereferencesbulk}
+          label="Delete"
+          dialogTitle="Delete selected references"
+          dialogDescription="This permanently removes the selected reference materials. This action cannot be undone."
+          requirePhrase
+        />
+      </BulkActionBar>
     </div>
   )
 }

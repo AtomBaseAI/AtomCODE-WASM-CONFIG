@@ -27,7 +27,8 @@ export const ModuleTableSchema = z.object({
     modulestatus: z.string(),
     questionscount: z.number(),
     mcqcount: z.number(),
-    maxscore: z.number()
+    maxscore: z.number(),
+    concepturl: z.string().nullable().optional()
 })
 
 export const ModuleQuestionTableSchema = z.object({

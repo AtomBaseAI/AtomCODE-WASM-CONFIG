@@ -6,6 +6,7 @@ import * as z from 'zod'
 import { revalidatePath } from "next/cache"
 import { AddStudentSchema, BulkImportStudentsSchema, DeleteStudentSchema, StudentPasswordResetSchema, StudentUpdateSchema } from "@/schemas/student-schema"
 import { genSaltSync, hashSync } from 'bcrypt-ts';
+import { requireAdmin } from "@/lib/action-guards";
 
 export const addstudent = async (values: z.infer<typeof AddStudentSchema>) => {
     const validatedFields = AddStudentSchema.safeParse(values)
@@ -135,3 +136,19 @@ export const importstudents = async (csvData: string) => {
     revalidatePath("/admin/students")
     return { success: "All students imported successfully!" };
 };
+
+export const deletestudentsbulk = async (ids: string[]) => {
+    const session = await requireAdmin();
+    if (!session) return { error: "Only admins can delete students." };
+
+    const validIds = (ids ?? []).filter(
+        (id) => typeof id === "string" && id.trim().length > 0
+    );
+    if (validIds.length === 0) return { error: "No students selected." };
+
+    const result = await db.user.deleteMany({
+        where: { id: { in: validIds } },
+    });
+    revalidatePath("/admin/students");
+    return { success: `${result.count} student(s) deleted.` };
+}

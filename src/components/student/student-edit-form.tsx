@@ -1,4 +1,5 @@
 "use client"
+import type { ReactNode } from "react"
 import {
     Dialog,
     DialogContent,
@@ -7,7 +8,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog"
 import { Pencil, Plus } from "lucide-react"
-import { useState, useTransition } from "react"
+import { useEffect, useState, useTransition } from "react"
 
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button"
@@ -38,7 +39,15 @@ import { StudentUpdateSchema } from "@/schemas/student-schema"
 import { updatestudent } from "@/actions/student"
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-const EditStudentForm = ({ student }: { student: z.infer<typeof StudentUpdateSchema> }) => {
+interface EditStudentFormProps {
+    student: z.infer<typeof StudentUpdateSchema>
+    /** Custom trigger element (defaults to the "Edit" button). */
+    trigger?: ReactNode
+    /** Called after a successful update (e.g. to refresh table data). */
+    onSuccess?: () => void
+}
+
+const EditStudentForm = ({ student, trigger, onSuccess }: EditStudentFormProps) => {
     const router = useRouter();
     const form = useForm<z.infer<typeof StudentUpdateSchema>>({
         resolver: zodResolver(StudentUpdateSchema),
@@ -46,20 +55,36 @@ const EditStudentForm = ({ student }: { student: z.infer<typeof StudentUpdateSch
             id: student.id,
             email: student.email,
             name: student.name,
-            phone: student.phone || undefined,
+            phone: student.phone ?? "",
             batch: student.batch || undefined,
             department: student.department || undefined,
             rollnumber: student.rollnumber || undefined,
-            github: student.github || undefined,
+            github: student.github ?? "",
             isActive: student.isActive || undefined,
             section: student.section || undefined,
-            linkedin: student.linkedin || undefined,
+            linkedin: student.linkedin ?? "",
         }
     })
     const [open, setOpen] = useState(false)
     const [isLoading, startTransition] = useTransition()
     const [error, setError] = useState<string | undefined>("")
     const [success, setSuccess] = useState<string | undefined>("")
+    // Keep the form in sync when the row data changes (e.g. after a table refresh)
+    useEffect(() => {
+        form.reset({
+            id: student.id,
+            email: student.email,
+            name: student.name,
+            phone: student.phone ?? "",
+            batch: student.batch || undefined,
+            department: student.department || undefined,
+            rollnumber: student.rollnumber || undefined,
+            github: student.github ?? "",
+            isActive: student.isActive || undefined,
+            section: student.section || undefined,
+            linkedin: student.linkedin ?? "",
+        })
+    }, [student, form])
     const handleSubmit = (values: z.infer<typeof StudentUpdateSchema>) => {
         setError("")
         setSuccess("")
@@ -72,6 +97,7 @@ const EditStudentForm = ({ student }: { student: z.infer<typeof StudentUpdateSch
                         form.reset()
                         setOpen(false)
                         toast.success(data.success);
+                        onSuccess?.();
                     }
                 })
                 .catch(() => toast.error("Something went wrong!"));
@@ -81,9 +107,11 @@ const EditStudentForm = ({ student }: { student: z.infer<typeof StudentUpdateSch
         <>
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogTrigger asChild>
-                    <Button variant='outline' size='icon' className="border-primary bg-transparent hover:bg-purple-700/10 flex w-auto p-1 gap-1 text-primary justify-center items-center pr-3">
-                        <Pencil className="size-5 bg-transparent text-primary" /> Edit
-                    </Button>
+                    {trigger ?? (
+                        <Button variant='outline' size='icon' className="border-primary bg-transparent hover:bg-purple-700/10 flex w-auto p-1 gap-1 text-primary justify-center items-center pr-3">
+                            <Pencil className="size-5 bg-transparent text-primary" /> Edit
+                        </Button>
+                    )}
                 </DialogTrigger>
                 <DialogContent aria-describedby={undefined} className="sm:max-w-[825px] max-h-[calc(100vh-2rem)] overflow-y-auto">
                     <DialogHeader>

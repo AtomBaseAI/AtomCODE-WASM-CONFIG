@@ -1,4 +1,5 @@
 "use client"
+import type { ReactNode } from "react"
 import {
     Dialog,
     DialogContent,
@@ -7,7 +8,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog"
 import { CalendarIcon, Plus, Pencil } from "lucide-react"
-import { useState, useTransition } from "react"
+import { useEffect, useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { LoaderIcon } from "lucide-react"
@@ -43,7 +44,15 @@ import { cn } from "@/lib/utils"
 import { updatecourse } from "@/actions/course"
 import { istTodayLocalStart } from '@/lib/utils'
 import { toast } from "sonner"
-const EditCourseForm = ({ course }: { course: z.infer<typeof CourseUpdateSchema> }) => {
+interface EditCourseFormProps {
+    course: z.infer<typeof CourseUpdateSchema>
+    /** Custom trigger element (defaults to the "Edit Course" button). */
+    trigger?: ReactNode
+    /** Called after a successful update (e.g. to refresh table data). */
+    onSuccess?: () => void
+}
+
+const EditCourseForm = ({ course, trigger, onSuccess }: EditCourseFormProps) => {
 
     const form = useForm<z.infer<typeof CourseUpdateSchema>>({
         resolver: zodResolver(CourseUpdateSchema),
@@ -59,6 +68,16 @@ const EditCourseForm = ({ course }: { course: z.infer<typeof CourseUpdateSchema>
     const [isLoading, startTransition] = useTransition()
     const [error, setError] = useState<string | undefined>("")
     const [success, setSuccess] = useState<string | undefined>("")
+    // Keep the form in sync when the row data changes (e.g. after a table refresh)
+    useEffect(() => {
+        form.reset({
+            id: course.id,
+            title: course.title,
+            startdate: course.startdate || undefined,
+            enddate: course.enddate || undefined,
+            language: course.language,
+        })
+    }, [course, form])
     const handleSubmit = (values: z.infer<typeof CourseUpdateSchema>) => {
         setError("")
         setSuccess("")
@@ -70,6 +89,7 @@ const EditCourseForm = ({ course }: { course: z.infer<typeof CourseUpdateSchema>
                         form.reset()
                         setOpen(false)
                         toast.success(data.success);
+                        onSuccess?.();
                     }
                 })
                 .catch(() => toast.error("Something went wrong!"));
@@ -79,10 +99,12 @@ const EditCourseForm = ({ course }: { course: z.infer<typeof CourseUpdateSchema>
         <>
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogTrigger asChild>
-                    <Button variant="outline" className="border-primary text-primary hover:bg-primary/60">
-                        <Pencil className="mr-2" />
-                        Edit Course
-                    </Button>
+                    {trigger ?? (
+                        <Button variant="outline" className="border-primary text-primary hover:bg-primary/60">
+                            <Pencil className="mr-2" />
+                            Edit Course
+                        </Button>
+                    )}
                 </DialogTrigger>
                 <DialogContent aria-describedby={undefined} className="sm:max-w-[425px] max-h-[calc(100vh-2rem)] overflow-y-auto">
                     <DialogHeader>

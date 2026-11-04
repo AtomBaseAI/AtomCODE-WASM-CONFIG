@@ -1,4 +1,5 @@
 "use client"
+import type { ReactNode } from "react"
 import {
     Dialog,
     DialogContent,
@@ -7,7 +8,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog"
 import { CalendarIcon, Hexagon, Pencil, Plus } from "lucide-react"
-import { useState, useTransition } from "react"
+import { useEffect, useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { LoaderIcon } from "lucide-react"
@@ -51,7 +52,14 @@ type moduleData = {
     maxscore: number;
     concepturl: string;
 }
-const EditModule = ({ modulez }: { modulez: moduleData }) => {
+interface EditModuleProps {
+    modulez: moduleData
+    /** Custom trigger element (defaults to the "Edit Module" button). */
+    trigger?: ReactNode
+    /** Called after a successful update (e.g. to refresh table data). */
+    onSuccess?: () => void
+}
+const EditModule = ({ modulez, trigger, onSuccess }: EditModuleProps) => {
 
     const form = useForm<z.input<typeof ModuleUpdateSchema>, any, z.output<typeof ModuleUpdateSchema>>({
         resolver: zodResolver(ModuleUpdateSchema),
@@ -69,6 +77,18 @@ const EditModule = ({ modulez }: { modulez: moduleData }) => {
     const [isLoading, startTransition] = useTransition()
     const [error, setError] = useState<string | undefined>("")
     const [success, setSuccess] = useState<string | undefined>("")
+    // Keep the form in sync when the row data changes (e.g. after a table refresh)
+    useEffect(() => {
+        form.reset({
+            id: modulez.id,
+            courseId: modulez.courseId,
+            title: modulez.title,
+            moduledate: modulez.moduledate,
+            modulestatus: modulez.modulestatus,
+            maxscore: modulez.maxscore,
+            concepturl: modulez.concepturl,
+        })
+    }, [modulez, form])
     const handleSubmit = (values: z.infer<typeof ModuleUpdateSchema>) => {
         setError("")
         setSuccess("")
@@ -82,6 +102,7 @@ const EditModule = ({ modulez }: { modulez: moduleData }) => {
                         form.reset()
                         setOpen(false)
                         toast.success(data.success);
+                        onSuccess?.();
                     }
                 })
                 .catch(() => toast.error("Something went wrong!"));
@@ -91,10 +112,12 @@ const EditModule = ({ modulez }: { modulez: moduleData }) => {
         <>
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogTrigger asChild>
-                    <Button variant="outline" className="bg-green-500 text-white hover:bg-green-700 hover:text-white">
-                        <Pencil className="mr-2" />
-                        Edit Module
-                    </Button>
+                    {trigger ?? (
+                        <Button variant="outline" className="bg-green-500 text-white hover:bg-green-700 hover:text-white">
+                            <Pencil className="mr-2" />
+                            Edit Module
+                        </Button>
+                    )}
                 </DialogTrigger>
                 <DialogContent aria-describedby={undefined} className="sm:max-w-[425px] max-h-[calc(100vh-2rem)] overflow-y-auto">
                     <DialogHeader>

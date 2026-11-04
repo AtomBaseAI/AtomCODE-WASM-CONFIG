@@ -82,16 +82,64 @@ export async function DELETE(req: Request, ctx: RouteContext) {
         return NextResponse.json({ error: "Group not found" }, { status: 404 });
     }
 
-    const questionId = new URL(req.url).searchParams.get("questionId");
-    if (!questionId) {
+    // Bulk mode: { questionIds: string[] } JSON body.
+    const body = await req.json().catch(() => null);
+    const rawIds = (body as { questionIds?: unknown } | null)?.questionIds;
+    const bulkIds = Array.isArray(rawIds)
+        ? Array.from(
+              new Set(
+                  rawIds.filter(
+                      (v): v is string =>
+                          typeof v === "string" && v.trim().length > 0
+                  )
+              )
+          )
+        : [];
+
+    // Single mode (backwards compatible): ?questionId=…
+    const questionId =
+        bulkIds.length === 0
+            ? new URL(req.url).searchParams.get("questionId")
+            : null;
+    if (bulkIds.length === 0 && !questionId) {
         return NextResponse.json(
-            { error: "'questionId' query parameter is required" },
+            { error: "'questionId' query parameter or 'questionIds' body is required" },
             { status: 400 }
         );
     }
 
+    if (bulkIds.length > 0) {
+        // Verify which of the ids actually belong to this group.
+        const connected = await db.codeQuestion.findMany({
+            where: { id: { in: bulkIds }, questionGroupId: id },
+            select: { id: true },
+        });
+        if (connected.length === 0) {
+            return NextResponse.json(
+                { error: "None of the selected questions belong to this group." },
+                { status: 404 }
+            );
+        }
+
+        await db.questionGroup.update({
+            where: { id },
+            data: {
+                questions: {
+                    disconnect: connected.map((q) => ({ id: q.id })),
+                },
+            },
+        });
+
+        const detached = bulkIds.length - connected.length;
+        return NextResponse.json({
+            success: `${connected.length} question(s) removed from the group`,
+            count: connected.length,
+            ...(detached > 0 ? { skipped: detached } : {}),
+        });
+    }
+
     const question = await db.codeQuestion.findFirst({
-        where: { id: questionId, questionGroupId: id },
+        where: { id: questionId!, questionGroupId: id },
         select: { id: true },
     });
     if (!question) {
@@ -104,7 +152,7 @@ export async function DELETE(req: Request, ctx: RouteContext) {
     await db.questionGroup.update({
         where: { id },
         data: {
-            questions: { disconnect: { id: questionId } },
+            questions: { disconnect: { id: questionId! } },
         },
     });
 
